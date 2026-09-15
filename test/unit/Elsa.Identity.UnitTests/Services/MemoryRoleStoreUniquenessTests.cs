@@ -13,35 +13,38 @@ namespace Elsa.Identity.UnitTests.Services;
 /// </summary>
 public class MemoryRoleStoreUniquenessTests
 {
-    [Fact(DisplayName = "SaveAsync rejects a different Id that repeats a name in the same tenant")]
+    [Test]
+    [DisplayName("SaveAsync rejects a different Id that repeats a name in the same tenant")]
     public async Task SaveAsync_WhenNameExistsUnderAnotherId_Throws()
     {
         var store = CreateStore("tenant-a");
         await store.SaveAsync(CreateRole("role-1", "Operators", "tenant-a"));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             store.SaveAsync(CreateRole("role-2", "Operators", "tenant-a")));
 
-        Assert.Contains("already exists", exception.Message);
+        await Assert.That(exception!.Message).Contains("already exists");
         var stored = (await store.FindManyAsync(new RoleFilter())).ToList();
-        Assert.Equal("role-1", Assert.Single(stored).Id);
+        await Assert.That((await Assert.That(stored).HasSingleItem()).Id).IsEqualTo("role-1");
     }
 
-    [Fact(DisplayName = "AddAsync rejects a different Id that repeats a name in the same tenant")]
+    [Test]
+    [DisplayName("AddAsync rejects a different Id that repeats a name in the same tenant")]
     public async Task AddAsync_WhenNameExistsUnderAnotherId_Throws()
     {
         var store = CreateStore("tenant-a");
         await store.AddAsync(CreateRole("role-1", "Operators", "tenant-a"));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             store.AddAsync(CreateRole("role-2", "Operators", "tenant-a")));
 
-        Assert.Contains("already exists", exception.Message);
+        await Assert.That(exception!.Message).Contains("already exists");
         var stored = (await store.FindManyAsync(new RoleFilter())).ToList();
-        Assert.Equal("role-1", Assert.Single(stored).Id);
+        await Assert.That((await Assert.That(stored).HasSingleItem()).Id).IsEqualTo("role-1");
     }
 
-    [Fact(DisplayName = "AddAsync rejects a role ID already used by another tenant")]
+    [Test]
+    [DisplayName("AddAsync rejects a role ID already used by another tenant")]
     public async Task AddAsync_WhenIdExistsInAnotherTenant_Throws()
     {
         var backing = new MemoryStore<Role>();
@@ -50,14 +53,15 @@ public class MemoryRoleStoreUniquenessTests
 
         await tenantA.AddAsync(CreateRole("shared-role", "Tenant A role", "tenant-a"));
 
-        await Assert.ThrowsAsync<ArgumentException>(() =>
+        await Assert.ThrowsExactlyAsync<ArgumentException>(() =>
             tenantB.AddAsync(CreateRole("shared-role", "Tenant B role", "tenant-b")));
 
-        Assert.Equal("tenant-a", (await tenantA.FindAsync(new RoleFilter { Id = "shared-role" }))!.TenantId);
-        Assert.Null(await tenantB.FindAsync(new RoleFilter { Id = "shared-role" }));
+        await Assert.That((await tenantA.FindAsync(new RoleFilter { Id = "shared-role" }))!.TenantId).IsEqualTo("tenant-a");
+        await Assert.That(await tenantB.FindAsync(new RoleFilter { Id = "shared-role" })).IsNull();
     }
 
-    [Fact(DisplayName = "AddAsync admits only one concurrent writer for a globally unique role ID")]
+    [Test]
+    [DisplayName("AddAsync admits only one concurrent writer for a globally unique role ID")]
     public async Task AddAsync_WhenConcurrentWritersUseTheSameId_AllButOneFailAtomically()
     {
         static async Task<Exception?> TryAddAsync(MemoryRoleStore store, Role role)
@@ -87,12 +91,17 @@ public class MemoryRoleStoreUniquenessTests
             .ToArray();
         var exceptions = await Task.WhenAll(attempts);
 
-        Assert.Single(exceptions, exception => exception is null);
-        Assert.All(exceptions.Where(exception => exception is not null), exception => Assert.IsType<ArgumentException>(exception));
-        Assert.Single(backing.List());
+        await Assert.That(exceptions).HasSingleItem(exception => exception is null);
+        foreach (var exception in exceptions.Where(exception => exception is not null))
+        {
+            await Assert.That(exception).IsTypeOf<ArgumentException>();
+        }
+
+        await Assert.That(backing.List()).HasSingleItem();
     }
 
-    [Fact(DisplayName = "SaveAsync rejects a role ID already used by another tenant")]
+    [Test]
+    [DisplayName("SaveAsync rejects a role ID already used by another tenant")]
     public async Task SaveAsync_WhenIdExistsInAnotherTenant_Throws()
     {
         var backing = new MemoryStore<Role>();
@@ -103,32 +112,33 @@ public class MemoryRoleStoreUniquenessTests
         tenantARole.Permissions = ["tenant-a:permission"];
         await tenantA.SaveAsync(tenantARole);
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             tenantB.SaveAsync(CreateRole("shared-role", "Tenant B role", "tenant-b")));
 
-        Assert.Contains("already exists", exception.Message);
-        Assert.Equal("tenant-a", (await tenantA.FindAsync(new RoleFilter { Id = "shared-role" }))!.TenantId);
-        Assert.Null(await tenantB.FindAsync(new RoleFilter { Id = "shared-role" }));
+        await Assert.That(exception!.Message).Contains("already exists");
+        await Assert.That((await tenantA.FindAsync(new RoleFilter { Id = "shared-role" }))!.TenantId).IsEqualTo("tenant-a");
+        await Assert.That(await tenantB.FindAsync(new RoleFilter { Id = "shared-role" })).IsNull();
 
         var roleTaggedAsOwner = CreateRole("shared-role", "Tenant A replacement", "tenant-a");
         roleTaggedAsOwner.Permissions = ["tenant-b:permission"];
-        await Assert.ThrowsAsync<InvalidOperationException>(() => tenantB.SaveAsync(roleTaggedAsOwner));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => tenantB.SaveAsync(roleTaggedAsOwner));
 
         var roleRehomedFromTenantA = CreateRole("shared-role", "Rehomed role", "tenant-b");
         roleRehomedFromTenantA.Permissions = ["tenant-b:permission"];
-        await Assert.ThrowsAsync<InvalidOperationException>(() => tenantA.SaveAsync(roleRehomedFromTenantA));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => tenantA.SaveAsync(roleRehomedFromTenantA));
 
         var roleMadeAgnostic = CreateRole("shared-role", "Agnostic role", Tenant.AgnosticTenantId);
         roleMadeAgnostic.Permissions = ["tenant-b:permission"];
-        await Assert.ThrowsAsync<InvalidOperationException>(() => tenantA.SaveAsync(roleMadeAgnostic));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => tenantA.SaveAsync(roleMadeAgnostic));
 
         var unchanged = await tenantA.FindAsync(new RoleFilter { Id = "shared-role" });
-        Assert.Equal("Tenant A role", unchanged!.Name);
-        Assert.Equal("tenant-a", unchanged.TenantId);
-        Assert.Equal(["tenant-a:permission"], unchanged.Permissions);
+        await Assert.That(unchanged!.Name).IsEqualTo("Tenant A role");
+        await Assert.That(unchanged.TenantId).IsEqualTo("tenant-a");
+        await Assert.That(unchanged.Permissions).IsEquivalentTo(["tenant-a:permission"], TUnit.Assertions.Enums.CollectionOrdering.Matching);
     }
 
-    [Fact(DisplayName = "SaveAsync allows a named tenant to update a visible agnostic role")]
+    [Test]
+    [DisplayName("SaveAsync allows a named tenant to update a visible agnostic role")]
     public async Task SaveAsync_WhenAgnosticRoleIsVisibleToNamedTenant_UpdatesExistingRole()
     {
         var backing = new MemoryStore<Role>();
@@ -140,12 +150,13 @@ public class MemoryRoleStoreUniquenessTests
         await tenantA.SaveAsync(CreateRole("shared-role", "Updated shared role", Tenant.AgnosticTenantId));
 
         var stored = await agnostic.FindAsync(new RoleFilter { Id = "shared-role" });
-        Assert.Equal("Updated shared role", stored!.Name);
-        Assert.Equal(Tenant.AgnosticTenantId, stored.TenantId);
-        Assert.Equal("Updated shared role", (await tenantA.FindAsync(new RoleFilter { Id = "shared-role" }))!.Name);
+        await Assert.That(stored!.Name).IsEqualTo("Updated shared role");
+        await Assert.That(stored.TenantId).IsEqualTo(Tenant.AgnosticTenantId);
+        await Assert.That((await tenantA.FindAsync(new RoleFilter { Id = "shared-role" }))!.Name).IsEqualTo("Updated shared role");
     }
 
-    [Fact(DisplayName = "SaveAsync allows the same Id to update its own name")]
+    [Test]
+    [DisplayName("SaveAsync allows the same Id to update its own name")]
     public async Task SaveAsync_WhenSameIdUpdatesName_Succeeds()
     {
         var store = CreateStore("tenant-a");
@@ -154,10 +165,11 @@ public class MemoryRoleStoreUniquenessTests
         await store.SaveAsync(CreateRole("role-1", "Operators A", "tenant-a"));
 
         var stored = await store.FindAsync(new RoleFilter { Id = "role-1" });
-        Assert.Equal("Operators A", stored!.Name);
+        await Assert.That(stored!.Name).IsEqualTo("Operators A");
     }
 
-    [Fact(DisplayName = "SaveAsync allows the same name in different tenants")]
+    [Test]
+    [DisplayName("SaveAsync allows the same name in different tenants")]
     public async Task SaveAsync_WhenNameRepeatsInAnotherTenant_Succeeds()
     {
         var backing = new MemoryStore<Role>();
@@ -167,11 +179,12 @@ public class MemoryRoleStoreUniquenessTests
         await tenantA.SaveAsync(CreateRole("role-a", "Operators", "tenant-a"));
         await tenantB.SaveAsync(CreateRole("role-b", "Operators", "tenant-b"));
 
-        Assert.Equal("Operators", (await tenantA.FindAsync(new RoleFilter { Id = "role-a" }))!.Name);
-        Assert.Equal("Operators", (await tenantB.FindAsync(new RoleFilter { Id = "role-b" }))!.Name);
+        await Assert.That((await tenantA.FindAsync(new RoleFilter { Id = "role-a" }))!.Name).IsEqualTo("Operators");
+        await Assert.That((await tenantB.FindAsync(new RoleFilter { Id = "role-b" }))!.Name).IsEqualTo("Operators");
     }
 
-    [Fact(DisplayName = "SaveAsync leaves the stored name unchanged when a Find result is renamed onto a collision")]
+    [Test]
+    [DisplayName("SaveAsync leaves the stored name unchanged when a Find result is renamed onto a collision")]
     public async Task SaveAsync_WhenFoundRoleRenamedOntoCollision_LeavesStoredNameUnchanged()
     {
         var store = CreateStore("tenant-a");
@@ -181,25 +194,26 @@ public class MemoryRoleStoreUniquenessTests
         var found = await store.FindAsync(new RoleFilter { Id = "role-2" });
         found!.Name = "Operators";
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => store.SaveAsync(found));
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => store.SaveAsync(found));
 
-        Assert.Contains("already exists", exception.Message);
+        await Assert.That(exception!.Message).Contains("already exists");
         var stored = await store.FindAsync(new RoleFilter { Id = "role-2" });
-        Assert.Equal("Reviewers", stored!.Name);
+        await Assert.That(stored!.Name).IsEqualTo("Reviewers");
     }
 
-    [Fact(DisplayName = "SaveAsync rejects renaming onto a name another Id already owns")]
+    [Test]
+    [DisplayName("SaveAsync rejects renaming onto a name another Id already owns")]
     public async Task SaveAsync_WhenRenamingOntoAnotherIdsName_Throws()
     {
         var store = CreateStore("tenant-a");
         await store.SaveAsync(CreateRole("role-1", "Operators", "tenant-a"));
         await store.SaveAsync(CreateRole("role-2", "Reviewers", "tenant-a"));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             store.SaveAsync(CreateRole("role-2", "Operators", "tenant-a")));
 
-        Assert.Contains("already exists", exception.Message);
-        Assert.Equal("Reviewers", (await store.FindAsync(new RoleFilter { Id = "role-2" }))!.Name);
+        await Assert.That(exception!.Message).Contains("already exists");
+        await Assert.That((await store.FindAsync(new RoleFilter { Id = "role-2" }))!.Name).IsEqualTo("Reviewers");
     }
 
     private static MemoryRoleStore CreateStore(string tenantId) =>

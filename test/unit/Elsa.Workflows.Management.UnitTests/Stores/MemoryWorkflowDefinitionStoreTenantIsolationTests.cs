@@ -4,6 +4,7 @@ using Elsa.Testing.Shared.Multitenancy;
 using Elsa.Workflows.Management.Entities;
 using Elsa.Workflows.Management.Filters;
 using Elsa.Workflows.Management.Stores;
+using System.Threading.Tasks;
 
 namespace Elsa.Workflows.Management.UnitTests.Stores;
 
@@ -13,7 +14,8 @@ namespace Elsa.Workflows.Management.UnitTests.Stores;
 /// </summary>
 public class MemoryWorkflowDefinitionStoreTenantIsolationTests
 {
-    [Fact(DisplayName = "FindManyAsync hides other tenants and keeps * visible")]
+    [Test]
+    [DisplayName("FindManyAsync hides other tenants and keeps * visible")]
     public async Task FindManyAsync_WhenNotTenantAgnostic_HidesOtherTenants()
     {
         var store = CreateStore("tenant-a");
@@ -21,13 +23,14 @@ public class MemoryWorkflowDefinitionStoreTenantIsolationTests
 
         var found = (await store.FindManyAsync(new WorkflowDefinitionFilter())).ToList();
 
-        Assert.Equal(2, found.Count);
-        Assert.Contains(found, x => x.Id == "def-a");
-        Assert.Contains(found, x => x.Id == "def-star");
-        Assert.DoesNotContain(found, x => x.Id == "def-b");
+        await Assert.That(found.Count).IsEqualTo(2);
+        await Assert.That(found).Contains(x => x.Id == "def-a");
+        await Assert.That(found).Contains(x => x.Id == "def-star");
+        await Assert.That(found).DoesNotContain(x => x.Id == "def-b");
     }
 
-    [Fact(DisplayName = "FindManyAsync with TenantAgnostic returns every tenant")]
+    [Test]
+    [DisplayName("FindManyAsync with TenantAgnostic returns every tenant")]
     public async Task FindManyAsync_WhenTenantAgnostic_ReturnsAllTenants()
     {
         var store = CreateStore("tenant-a");
@@ -35,13 +38,14 @@ public class MemoryWorkflowDefinitionStoreTenantIsolationTests
 
         var found = (await store.FindManyAsync(new WorkflowDefinitionFilter { TenantAgnostic = true })).ToList();
 
-        Assert.Equal(3, found.Count);
-        Assert.Contains(found, x => x.Id == "def-a");
-        Assert.Contains(found, x => x.Id == "def-b");
-        Assert.Contains(found, x => x.Id == "def-star");
+        await Assert.That(found.Count).IsEqualTo(3);
+        await Assert.That(found).Contains(x => x.Id == "def-a");
+        await Assert.That(found).Contains(x => x.Id == "def-b");
+        await Assert.That(found).Contains(x => x.Id == "def-star");
     }
 
-    [Fact(DisplayName = "FindAsync does not return another tenant's row by Id")]
+    [Test]
+    [DisplayName("FindAsync does not return another tenant's row by Id")]
     public async Task FindAsync_WhenOtherTenant_ReturnsNull()
     {
         var store = CreateStore("tenant-a");
@@ -49,10 +53,11 @@ public class MemoryWorkflowDefinitionStoreTenantIsolationTests
 
         var found = await store.FindAsync(new WorkflowDefinitionFilter { Id = "def-b" });
 
-        Assert.Null(found);
+        await Assert.That(found).IsNull();
     }
 
-    [Fact(DisplayName = "AnyAsync is false when only another tenant matches")]
+    [Test]
+    [DisplayName("AnyAsync is false when only another tenant matches")]
     public async Task AnyAsync_WhenOnlyOtherTenantMatches_ReturnsFalse()
     {
         var store = CreateStore("tenant-a");
@@ -60,10 +65,11 @@ public class MemoryWorkflowDefinitionStoreTenantIsolationTests
 
         var exists = await store.AnyAsync(new WorkflowDefinitionFilter { Id = "def-b" });
 
-        Assert.False(exists);
+        await Assert.That(exists).IsFalse();
     }
 
-    [Fact(DisplayName = "CountDistinctAsync counts only the current tenant's definition IDs")]
+    [Test]
+    [DisplayName("CountDistinctAsync counts only the current tenant's definition IDs")]
     public async Task CountDistinctAsync_CountsOnlyVisibleDefinitions()
     {
         var store = CreateStore("tenant-a");
@@ -71,10 +77,11 @@ public class MemoryWorkflowDefinitionStoreTenantIsolationTests
 
         var count = await store.CountDistinctAsync();
 
-        Assert.Equal(2, count);
+        await Assert.That(count).IsEqualTo(2);
     }
 
-    [Fact(DisplayName = "GetIsNameUnique allows the same name in another tenant")]
+    [Test]
+    [DisplayName("GetIsNameUnique allows the same name in another tenant")]
     public async Task GetIsNameUnique_AllowsSameNameInAnotherTenant()
     {
         var store = CreateStore("tenant-a");
@@ -82,10 +89,11 @@ public class MemoryWorkflowDefinitionStoreTenantIsolationTests
 
         var unique = await store.GetIsNameUnique("order");
 
-        Assert.True(unique);
+        await Assert.That(unique).IsTrue();
     }
 
-    [Fact(DisplayName = "GetIsNameUnique is false when the current tenant already has the name")]
+    [Test]
+    [DisplayName("GetIsNameUnique is false when the current tenant already has the name")]
     public async Task GetIsNameUnique_WhenCurrentTenantOwnsTheName_ReturnsFalse()
     {
         var store = CreateStore("tenant-a");
@@ -93,10 +101,11 @@ public class MemoryWorkflowDefinitionStoreTenantIsolationTests
 
         var unique = await store.GetIsNameUnique("order");
 
-        Assert.False(unique);
+        await Assert.That(unique).IsFalse();
     }
 
-    [Fact(DisplayName = "DeleteAsync does not remove another tenant's rows")]
+    [Test]
+    [DisplayName("DeleteAsync does not remove another tenant's rows")]
     public async Task DeleteAsync_DoesNotDeleteOtherTenantRows()
     {
         var store = CreateStore("tenant-a");
@@ -105,12 +114,13 @@ public class MemoryWorkflowDefinitionStoreTenantIsolationTests
         var deleted = await store.DeleteAsync(new WorkflowDefinitionFilter());
         var remaining = (await store.FindManyAsync(new WorkflowDefinitionFilter { TenantAgnostic = true })).ToList();
 
-        Assert.Equal(2, deleted);
-        Assert.Single(remaining);
-        Assert.Equal("def-b", remaining[0].Id);
+        await Assert.That(deleted).IsEqualTo(2);
+        await Assert.That(remaining).HasSingleItem();
+        await Assert.That(remaining[0].Id).IsEqualTo("def-b");
     }
 
-    [Fact(DisplayName = "DeleteAsync with a shared DefinitionId leaves the other tenant's versions")]
+    [Test]
+    [DisplayName("DeleteAsync with a shared DefinitionId leaves the other tenant's versions")]
     public async Task DeleteAsync_WhenDefinitionIdIsShared_LeavesOtherTenantRows()
     {
         var backing = new MemoryStore<WorkflowDefinition>();
@@ -123,13 +133,14 @@ public class MemoryWorkflowDefinitionStoreTenantIsolationTests
         var remainingForA = (await tenantA.FindManyAsync(new WorkflowDefinitionFilter { DefinitionId = "order" })).ToList();
         var remainingForB = (await tenantB.FindManyAsync(new WorkflowDefinitionFilter { DefinitionId = "order" })).ToList();
 
-        Assert.Equal(1, deleted);
-        Assert.Empty(remainingForA);
-        Assert.Single(remainingForB);
-        Assert.Equal("def-b", remainingForB[0].Id);
+        await Assert.That(deleted).IsEqualTo(1);
+        await Assert.That(remainingForA).IsEmpty();
+        await Assert.That(remainingForB).HasSingleItem();
+        await Assert.That(remainingForB[0].Id).IsEqualTo("def-b");
     }
 
-    [Fact(DisplayName = "FindManyAsync on the default tenant includes null TenantId rows")]
+    [Test]
+    [DisplayName("FindManyAsync on the default tenant includes null TenantId rows")]
     public async Task FindManyAsync_WhenAmbientIsDefault_IncludesNullTenantId()
     {
         var store = CreateStore(Tenant.DefaultTenantId);
@@ -138,11 +149,12 @@ public class MemoryWorkflowDefinitionStoreTenantIsolationTests
 
         var found = (await store.FindManyAsync(new WorkflowDefinitionFilter())).ToList();
 
-        Assert.Single(found);
-        Assert.Equal("def-null", found[0].Id);
+        await Assert.That(found).HasSingleItem();
+        await Assert.That(found[0].Id).IsEqualTo("def-null");
     }
 
-    [Fact(DisplayName = "FindManyAsync on a named tenant hides null TenantId rows")]
+    [Test]
+    [DisplayName("FindManyAsync on a named tenant hides null TenantId rows")]
     public async Task FindManyAsync_WhenAmbientIsNamed_HidesNullTenantId()
     {
         var store = CreateStore("tenant-a");
@@ -151,8 +163,8 @@ public class MemoryWorkflowDefinitionStoreTenantIsolationTests
 
         var found = (await store.FindManyAsync(new WorkflowDefinitionFilter())).ToList();
 
-        Assert.Single(found);
-        Assert.Equal("def-a", found[0].Id);
+        await Assert.That(found).HasSingleItem();
+        await Assert.That(found[0].Id).IsEqualTo("def-a");
     }
 
     private static MemoryWorkflowDefinitionStore CreateStore(string tenantId) =>

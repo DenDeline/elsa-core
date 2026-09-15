@@ -12,21 +12,23 @@ namespace Elsa.Labels.UnitTests.Services;
 /// </summary>
 public class InMemoryLabelStoreUniquenessTests
 {
-    [Fact(DisplayName = "SaveAsync rejects a different Id that repeats a normalized name in the same tenant")]
+    [Test]
+    [DisplayName("SaveAsync rejects a different Id that repeats a normalized name in the same tenant")]
     public async Task SaveAsync_WhenNormalizedNameExistsUnderAnotherId_Throws()
     {
         var store = CreateStore("tenant-a");
         await store.SaveAsync(Label("label-1", "Urgent", "tenant-a"));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             store.SaveAsync(Label("label-2", "urgent", "tenant-a")));
 
-        Assert.Contains("already exists", exception.Message);
+        await Assert.That(exception.Message).Contains("already exists");
         var stored = (await store.ListAsync()).Items.ToList();
-        Assert.Equal("label-1", Assert.Single(stored).Id);
+        await Assert.That((await Assert.That(stored).HasSingleItem()).Id).IsEqualTo("label-1");
     }
 
-    [Fact(DisplayName = "SaveAsync allows the same Id to update its own name")]
+    [Test]
+    [DisplayName("SaveAsync allows the same Id to update its own name")]
     public async Task SaveAsync_WhenSameIdUpdatesName_Succeeds()
     {
         var store = CreateStore("tenant-a");
@@ -35,11 +37,12 @@ public class InMemoryLabelStoreUniquenessTests
         await store.SaveAsync(Label("label-1", "Critical", "tenant-a"));
 
         var stored = await store.FindByIdAsync("label-1");
-        Assert.Equal("Critical", stored!.Name);
-        Assert.Equal("critical", stored.NormalizedName);
+        await Assert.That(stored!.Name).IsEqualTo("Critical");
+        await Assert.That(stored.NormalizedName).IsEqualTo("critical");
     }
 
-    [Fact(DisplayName = "SaveAsync allows the same normalized name in different tenants")]
+    [Test]
+    [DisplayName("SaveAsync allows the same normalized name in different tenants")]
     public async Task SaveAsync_WhenNormalizedNameRepeatsInAnotherTenant_Succeeds()
     {
         var labels = new MemoryStore<Label>();
@@ -50,25 +53,27 @@ public class InMemoryLabelStoreUniquenessTests
         await tenantA.SaveAsync(Label("label-a", "Urgent", "tenant-a"));
         await tenantB.SaveAsync(Label("label-b", "Urgent", "tenant-b"));
 
-        Assert.Equal("urgent", (await tenantA.FindByIdAsync("label-a"))!.NormalizedName);
-        Assert.Equal("urgent", (await tenantB.FindByIdAsync("label-b"))!.NormalizedName);
+        await Assert.That((await tenantA.FindByIdAsync("label-a"))!.NormalizedName).IsEqualTo("urgent");
+        await Assert.That((await tenantB.FindByIdAsync("label-b"))!.NormalizedName).IsEqualTo("urgent");
     }
 
-    [Fact(DisplayName = "SaveAsync rejects renaming onto a normalized name another Id already owns")]
+    [Test]
+    [DisplayName("SaveAsync rejects renaming onto a normalized name another Id already owns")]
     public async Task SaveAsync_WhenRenamingOntoAnotherIdsNormalizedName_Throws()
     {
         var store = CreateStore("tenant-a");
         await store.SaveAsync(Label("label-1", "Urgent", "tenant-a"));
         await store.SaveAsync(Label("label-2", "Later", "tenant-a"));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             store.SaveAsync(Label("label-2", "Urgent", "tenant-a")));
 
-        Assert.Contains("already exists", exception.Message);
-        Assert.Equal("Later", (await store.FindByIdAsync("label-2"))!.Name);
+        await Assert.That(exception.Message).Contains("already exists");
+        await Assert.That((await store.FindByIdAsync("label-2"))!.Name).IsEqualTo("Later");
     }
 
-    [Fact(DisplayName = "SaveAsync leaves the stored name unchanged when a Find result is renamed onto a collision")]
+    [Test]
+    [DisplayName("SaveAsync leaves the stored name unchanged when a Find result is renamed onto a collision")]
     public async Task SaveAsync_WhenFoundLabelRenamedOntoCollision_LeavesStoredNameUnchanged()
     {
         var store = CreateStore("tenant-a");
@@ -78,28 +83,30 @@ public class InMemoryLabelStoreUniquenessTests
         var found = await store.FindByIdAsync("label-2");
         found!.Name = "Urgent";
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() => store.SaveAsync(found));
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => store.SaveAsync(found));
 
-        Assert.Contains("already exists", exception.Message);
+        await Assert.That(exception.Message).Contains("already exists");
         var stored = await store.FindByIdAsync("label-2");
-        Assert.Equal("Later", stored!.Name);
-        Assert.Equal("later", stored.NormalizedName);
+        await Assert.That(stored!.Name).IsEqualTo("Later");
+        await Assert.That(stored.NormalizedName).IsEqualTo("later");
     }
 
-    [Fact(DisplayName = "SaveAsync treats a stamped ambient tenant as the uniqueness tenant")]
+    [Test]
+    [DisplayName("SaveAsync treats a stamped ambient tenant as the uniqueness tenant")]
     public async Task SaveAsync_WhenTenantIdUnset_UsesStampedAmbientTenantForUniqueness()
     {
         var store = CreateStore("tenant-a");
         await store.SaveAsync(Label("label-1", "Urgent", tenantId: null));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             store.SaveAsync(Label("label-2", "Urgent", tenantId: null)));
 
-        Assert.Contains("already exists", exception.Message);
-        Assert.Equal("tenant-a", (await store.FindByIdAsync("label-1"))!.TenantId);
+        await Assert.That(exception.Message).Contains("already exists");
+        await Assert.That((await store.FindByIdAsync("label-1"))!.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveAsync allows the same normalized name for * and a tenant-scoped label")]
+    [Test]
+    [DisplayName("SaveAsync allows the same normalized name for * and a tenant-scoped label")]
     public async Task SaveAsync_WhenAgnosticAndTenantScopedShareNormalizedName_Succeeds()
     {
         var store = CreateStore("tenant-a");
@@ -107,11 +114,12 @@ public class InMemoryLabelStoreUniquenessTests
         await store.SaveAsync(Label("label-star", "Urgent", Tenant.AgnosticTenantId));
         await store.SaveAsync(Label("label-a", "Urgent", "tenant-a"));
 
-        Assert.NotNull(await store.FindByIdAsync("label-star"));
-        Assert.NotNull(await store.FindByIdAsync("label-a"));
+        await Assert.That(await store.FindByIdAsync("label-star")).IsNotNull();
+        await Assert.That(await store.FindByIdAsync("label-a")).IsNotNull();
     }
 
-    [Fact(DisplayName = "SaveAsync keeps NormalizedName in sync with Name")]
+    [Test]
+    [DisplayName("SaveAsync keeps NormalizedName in sync with Name")]
     public async Task SaveAsync_WhenNormalizedNameIsStale_ResyncsFromName()
     {
         var store = CreateStore("tenant-a");
@@ -120,38 +128,41 @@ public class InMemoryLabelStoreUniquenessTests
 
         await store.SaveAsync(label);
 
-        Assert.Equal("urgent", (await store.FindByIdAsync("label-1"))!.NormalizedName);
+        await Assert.That((await store.FindByIdAsync("label-1"))!.NormalizedName).IsEqualTo("urgent");
     }
 
-    [Fact(DisplayName = "SaveManyAsync rejects a batch that repeats a normalized name already in the store")]
+    [Test]
+    [DisplayName("SaveManyAsync rejects a batch that repeats a normalized name already in the store")]
     public async Task SaveManyAsync_WhenNormalizedNameExistsUnderAnotherId_Throws()
     {
         var store = CreateStore("tenant-a");
         await store.SaveAsync(Label("label-1", "Urgent", "tenant-a"));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             store.SaveManyAsync([Label("label-2", "Urgent", "tenant-a")]));
 
-        Assert.Contains("already exists", exception.Message);
-        Assert.Null(await store.FindByIdAsync("label-2"));
+        await Assert.That(exception.Message).Contains("already exists");
+        await Assert.That(await store.FindByIdAsync("label-2")).IsNull();
     }
 
-    [Fact(DisplayName = "SaveManyAsync rejects two different Ids that share a normalized name")]
+    [Test]
+    [DisplayName("SaveManyAsync rejects two different Ids that share a normalized name")]
     public async Task SaveManyAsync_WhenBatchRepeatsNormalizedName_Throws()
     {
         var store = CreateStore("tenant-a");
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             store.SaveManyAsync([
                 Label("label-1", "Urgent", "tenant-a"),
                 Label("label-2", "urgent", "tenant-a")
             ]));
 
-        Assert.Contains("already exists", exception.Message);
-        Assert.Empty((await store.ListAsync()).Items);
+        await Assert.That(exception.Message).Contains("already exists");
+        await Assert.That((await store.ListAsync()).Items).IsEmpty();
     }
 
-    [Fact(DisplayName = "SaveManyAsync allows swapping normalized names within one batch")]
+    [Test]
+    [DisplayName("SaveManyAsync allows swapping normalized names within one batch")]
     public async Task SaveManyAsync_WhenBatchSwapsNormalizedNames_Succeeds()
     {
         var store = CreateStore("tenant-a");
@@ -163,8 +174,8 @@ public class InMemoryLabelStoreUniquenessTests
             Label("label-2", "Urgent", "tenant-a")
         ]);
 
-        Assert.Equal("later", (await store.FindByIdAsync("label-1"))!.NormalizedName);
-        Assert.Equal("urgent", (await store.FindByIdAsync("label-2"))!.NormalizedName);
+        await Assert.That((await store.FindByIdAsync("label-1"))!.NormalizedName).IsEqualTo("later");
+        await Assert.That((await store.FindByIdAsync("label-2"))!.NormalizedName).IsEqualTo("urgent");
     }
 
     private static InMemoryLabelStore CreateStore(string tenantId) =>

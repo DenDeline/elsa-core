@@ -4,6 +4,7 @@ using Elsa.Testing.Shared.Multitenancy;
 using Elsa.Workflows.Runtime.Entities;
 using Elsa.Workflows.Runtime.Filters;
 using Elsa.Workflows.Runtime.Stores;
+using System.Threading.Tasks;
 
 namespace Elsa.Workflows.Runtime.UnitTests.Stores;
 
@@ -13,7 +14,8 @@ namespace Elsa.Workflows.Runtime.UnitTests.Stores;
 /// </summary>
 public class MemoryTriggerStoreTenantIsolationTests
 {
-    [Fact(DisplayName = "FindManyAsync hides other tenants and keeps * visible")]
+    [Test]
+    [DisplayName("FindManyAsync hides other tenants and keeps * visible")]
     public async Task FindManyAsync_WhenNotTenantAgnostic_HidesOtherTenants()
     {
         var store = CreateStore("tenant-a");
@@ -21,13 +23,14 @@ public class MemoryTriggerStoreTenantIsolationTests
 
         var found = (await store.FindManyAsync(new TriggerFilter())).ToList();
 
-        Assert.Equal(2, found.Count);
-        Assert.Contains(found, x => x.Id == "id-a");
-        Assert.Contains(found, x => x.Id == "id-star");
-        Assert.DoesNotContain(found, x => x.Id == "id-b");
+        await Assert.That(found.Count).IsEqualTo(2);
+        await Assert.That(found).Contains(x => x.Id == "id-a");
+        await Assert.That(found).Contains(x => x.Id == "id-star");
+        await Assert.That(found).DoesNotContain(x => x.Id == "id-b");
     }
 
-    [Fact(DisplayName = "FindManyAsync with TenantAgnostic returns every tenant")]
+    [Test]
+    [DisplayName("FindManyAsync with TenantAgnostic returns every tenant")]
     public async Task FindManyAsync_WhenTenantAgnostic_ReturnsAllTenants()
     {
         var store = CreateStore("tenant-a");
@@ -35,13 +38,14 @@ public class MemoryTriggerStoreTenantIsolationTests
 
         var found = (await store.FindManyAsync(new TriggerFilter { TenantAgnostic = true })).ToList();
 
-        Assert.Equal(3, found.Count);
-        Assert.Contains(found, x => x.Id == "id-a");
-        Assert.Contains(found, x => x.Id == "id-b");
-        Assert.Contains(found, x => x.Id == "id-star");
+        await Assert.That(found.Count).IsEqualTo(3);
+        await Assert.That(found).Contains(x => x.Id == "id-a");
+        await Assert.That(found).Contains(x => x.Id == "id-b");
+        await Assert.That(found).Contains(x => x.Id == "id-star");
     }
 
-    [Fact(DisplayName = "FindAsync does not return another tenant's row by Id")]
+    [Test]
+    [DisplayName("FindAsync does not return another tenant's row by Id")]
     public async Task FindAsync_WhenOtherTenant_ReturnsNull()
     {
         var store = CreateStore("tenant-a");
@@ -49,10 +53,11 @@ public class MemoryTriggerStoreTenantIsolationTests
 
         var found = await store.FindAsync(new TriggerFilter { Id = "id-b" });
 
-        Assert.Null(found);
+        await Assert.That(found).IsNull();
     }
 
-    [Fact(DisplayName = "DeleteManyAsync does not remove another tenant's rows")]
+    [Test]
+    [DisplayName("DeleteManyAsync does not remove another tenant's rows")]
     public async Task DeleteManyAsync_DoesNotDeleteOtherTenantRows()
     {
         var store = CreateStore("tenant-a");
@@ -61,12 +66,13 @@ public class MemoryTriggerStoreTenantIsolationTests
         var deleted = await store.DeleteManyAsync(new TriggerFilter());
         var remaining = (await store.FindManyAsync(new TriggerFilter { TenantAgnostic = true })).ToList();
 
-        Assert.Equal(2, deleted);
-        Assert.Single(remaining);
-        Assert.Equal("id-b", remaining[0].Id);
+        await Assert.That(deleted).IsEqualTo(2);
+        await Assert.That(remaining).HasSingleItem();
+        await Assert.That(remaining[0].Id).IsEqualTo("id-b");
     }
 
-    [Fact(DisplayName = "FindManyAsync on the default tenant includes null TenantId rows")]
+    [Test]
+    [DisplayName("FindManyAsync on the default tenant includes null TenantId rows")]
     public async Task FindManyAsync_WhenAmbientIsDefault_IncludesNullTenantId()
     {
         var store = new MemoryTriggerStore(new MemoryStore<StoredTrigger>());
@@ -79,8 +85,8 @@ public class MemoryTriggerStoreTenantIsolationTests
 
         var found = (await store.FindManyAsync(new TriggerFilter())).ToList();
 
-        Assert.Single(found);
-        Assert.Equal("id-null", found[0].Id);
+        await Assert.That(found).HasSingleItem();
+        await Assert.That(found[0].Id).IsEqualTo("id-null");
     }
 
     private static MemoryTriggerStore CreateStore(string tenantId) =>

@@ -13,7 +13,8 @@ namespace Elsa.Identity.UnitTests.Services;
 /// </summary>
 public class MemoryUserStoreTenantIsolationTests
 {
-    [Fact(DisplayName = "FindManyAsync hides other tenants and keeps * visible")]
+    [Test]
+    [DisplayName("FindManyAsync hides other tenants and keeps * visible")]
     public async Task FindManyAsync_HidesOtherTenants()
     {
         var store = CreateStore("tenant-a");
@@ -21,13 +22,14 @@ public class MemoryUserStoreTenantIsolationTests
 
         var found = (await store.FindManyAsync(new UserFilter())).ToList();
 
-        Assert.Equal(2, found.Count);
-        Assert.Contains(found, x => x.Id == "user-a");
-        Assert.Contains(found, x => x.Id == "user-star");
-        Assert.DoesNotContain(found, x => x.Id == "user-b");
+        await Assert.That(found.Count).IsEqualTo(2);
+        await Assert.That(found).Contains(x => x.Id == "user-a");
+        await Assert.That(found).Contains(x => x.Id == "user-star");
+        await Assert.That(found).DoesNotContain(x => x.Id == "user-b");
     }
 
-    [Fact(DisplayName = "FindAsync does not return another tenant's user")]
+    [Test]
+    [DisplayName("FindAsync does not return another tenant's user")]
     public async Task FindAsync_WhenOtherTenant_ReturnsNull()
     {
         var store = CreateStore("tenant-a");
@@ -35,10 +37,11 @@ public class MemoryUserStoreTenantIsolationTests
 
         var found = await store.FindAsync(new UserFilter { Id = "user-b" });
 
-        Assert.Null(found);
+        await Assert.That(found).IsNull();
     }
 
-    [Fact(DisplayName = "FindAsync on a named tenant hides null TenantId users")]
+    [Test]
+    [DisplayName("FindAsync on a named tenant hides null TenantId users")]
     public async Task FindAsync_WhenAmbientIsNamed_HidesNullTenantId()
     {
         var store = StoreWithPreassignedRows("tenant-a");
@@ -46,24 +49,26 @@ public class MemoryUserStoreTenantIsolationTests
         var found = await store.FindAsync(new UserFilter { Id = "user-null" });
         var own = await store.FindAsync(new UserFilter { Id = "user-a" });
 
-        Assert.Null(found);
-        Assert.NotNull(own);
-        Assert.Equal("user-a", own.Id);
+        await Assert.That(found).IsNull();
+        await Assert.That(own).IsNotNull();
+        await Assert.That(own.Id).IsEqualTo("user-a");
     }
 
-    [Fact(DisplayName = "FindAsync on the default tenant includes null TenantId users")]
+    [Test]
+    [DisplayName("FindAsync on the default tenant includes null TenantId users")]
     public async Task FindAsync_WhenAmbientIsDefault_IncludesNullTenantId()
     {
         var store = StoreWithPreassignedRows(Tenant.DefaultTenantId);
 
         var found = await store.FindAsync(new UserFilter { Id = "user-null" });
 
-        Assert.NotNull(found);
-        Assert.Equal("user-null", found.Id);
-        Assert.Null(found.TenantId);
+        await Assert.That(found).IsNotNull();
+        await Assert.That(found.Id).IsEqualTo("user-null");
+        await Assert.That(found.TenantId).IsNull();
     }
 
-    [Fact(DisplayName = "DeleteAsync does not remove another tenant's users")]
+    [Test]
+    [DisplayName("DeleteAsync does not remove another tenant's users")]
     public async Task DeleteAsync_DoesNotDeleteOtherTenantRows()
     {
         var backing = new MemoryStore<User>();
@@ -74,11 +79,12 @@ public class MemoryUserStoreTenantIsolationTests
         await tenantA.DeleteAsync(new UserFilter { Id = "user-b" });
         var remaining = await tenantB.FindAsync(new UserFilter { Id = "user-b" });
 
-        Assert.NotNull(remaining);
-        Assert.Equal("user-b", remaining.Id);
+        await Assert.That(remaining).IsNotNull();
+        await Assert.That(remaining.Id).IsEqualTo("user-b");
     }
 
-    [Fact(DisplayName = "DeleteAsync leaves a same-ID row after another tenant replaces it")]
+    [Test]
+    [DisplayName("DeleteAsync leaves a same-ID row after another tenant replaces it")]
     public async Task DeleteAsync_WhenSameIdWasReplacedByOtherTenant_LeavesReplacement()
     {
         var backing = new MemoryStore<User>();
@@ -90,11 +96,12 @@ public class MemoryUserStoreTenantIsolationTests
         await tenantA.DeleteAsync(new UserFilter { Id = "shared" });
         var remaining = await tenantB.FindAsync(new UserFilter { Id = "shared" });
 
-        Assert.NotNull(remaining);
-        Assert.Equal("tenant-b", remaining.TenantId);
+        await Assert.That(remaining).IsNotNull();
+        await Assert.That(remaining.TenantId).IsEqualTo("tenant-b");
     }
 
-    [Fact(DisplayName = "SaveAsync stamps the ambient tenant when TenantId is unset")]
+    [Test]
+    [DisplayName("SaveAsync stamps the ambient tenant when TenantId is unset")]
     public async Task SaveAsync_WhenTenantIdUnset_StampsAmbientTenant()
     {
         var store = CreateStore("tenant-a");
@@ -102,11 +109,12 @@ public class MemoryUserStoreTenantIsolationTests
 
         await store.SaveAsync(user);
 
-        Assert.Equal("tenant-a", user.TenantId);
-        Assert.Equal("tenant-a", (await store.FindAsync(new UserFilter { Id = "user-new" }))!.TenantId);
+        await Assert.That(user.TenantId).IsEqualTo("tenant-a");
+        await Assert.That((await store.FindAsync(new UserFilter { Id = "user-new" }))!.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveAsync does not overwrite * or an explicit TenantId")]
+    [Test]
+    [DisplayName("SaveAsync does not overwrite * or an explicit TenantId")]
     public async Task SaveAsync_DoesNotOverwriteAgnosticOrExplicitTenantId()
     {
         var store = CreateStore("tenant-a");
@@ -116,8 +124,8 @@ public class MemoryUserStoreTenantIsolationTests
         await store.SaveAsync(agnostic);
         await store.SaveAsync(explicitTenant);
 
-        Assert.Equal(Tenant.AgnosticTenantId, agnostic.TenantId);
-        Assert.Equal("tenant-a", explicitTenant.TenantId);
+        await Assert.That(agnostic.TenantId).IsEqualTo(Tenant.AgnosticTenantId);
+        await Assert.That(explicitTenant.TenantId).IsEqualTo("tenant-a");
     }
 
     private static MemoryUserStore CreateStore(string tenantId) =>

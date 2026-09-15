@@ -16,10 +16,9 @@ namespace Elsa.Alterations.Persistence.ConformanceTests;
 /// EF Alterations Save/SaveMany must refuse ID collisions atomically (no pre-read guard).
 /// Kept out of the Memory/EF conformance matrix so that suite stays on read/stamp/query/round-trip.
 /// </summary>
-[Collection(AlterationStoreSqliteConformanceCollection.Name)]
 public sealed class EFCoreAlterationStoreTenantOwnershipTests
 {
-    [Fact]
+    [Test]
     public async Task SaveAsync_WhenOtherNamedTenantOwnsPlanId_ThrowsAndLeavesOwnerAndPayload()
     {
         await using var owner = await AlterationStoreScenario.CreateSqliteAsync("tenant-a");
@@ -27,16 +26,16 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
 
         using (owner.UseTenant("tenant-b"))
         {
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 owner.Plans.SaveAsync(Plan("shared", "tenant-b", AlterationPlanStatus.Completed, "stolen")));
-            Assert.Contains("shared", ex.Message);
+            await Assert.That(ex.Message).Contains("shared");
         }
 
         var remaining = await owner.Plans.FindAsync(new AlterationPlanFilter { Id = "shared" });
-        AssertUnchangedPlan(remaining, "tenant-a", AlterationPlanStatus.Running, "original");
+        await AssertUnchangedPlanAsync(remaining, "tenant-a", AlterationPlanStatus.Running, "original");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_WhenAgnosticPlanExists_NamedTenantThrowsAndLeavesOwnerAndPayload()
     {
         await using var scenario = await AlterationStoreScenario.CreateSqliteAsync(Tenant.AgnosticTenantId);
@@ -44,19 +43,19 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
 
         using (scenario.UseTenant("tenant-b"))
         {
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 scenario.Plans.SaveAsync(Plan("shared", "tenant-b", AlterationPlanStatus.Completed, "stolen")));
-            Assert.Contains("shared", ex.Message);
+            await Assert.That(ex.Message).Contains("shared");
         }
 
         using (scenario.UseTenant(Tenant.AgnosticTenantId))
         {
             var remaining = await scenario.Plans.FindAsync(new AlterationPlanFilter { Id = "shared" });
-            AssertUnchangedPlan(remaining, Tenant.AgnosticTenantId, AlterationPlanStatus.Running, "original");
+            await AssertUnchangedPlanAsync(remaining, Tenant.AgnosticTenantId, AlterationPlanStatus.Running, "original");
         }
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_WhenAmbientForgesOwnerTenantIdOnPlan_ThrowsAndLeavesOwnerAndPayload()
     {
         await using var owner = await AlterationStoreScenario.CreateSqliteAsync("tenant-a");
@@ -64,16 +63,16 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
 
         using (owner.UseTenant("tenant-b"))
         {
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 owner.Plans.SaveAsync(Plan("shared", "tenant-a", AlterationPlanStatus.Completed, "stolen")));
-            Assert.Contains("shared", ex.Message);
+            await Assert.That(ex.Message).Contains("shared");
         }
 
         var remaining = await owner.Plans.FindAsync(new AlterationPlanFilter { Id = "shared" });
-        AssertUnchangedPlan(remaining, "tenant-a", AlterationPlanStatus.Running, "original");
+        await AssertUnchangedPlanAsync(remaining, "tenant-a", AlterationPlanStatus.Running, "original");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_WhenSameTenantOwnsPlanId_UpdatesPayload()
     {
         await using var scenario = await AlterationStoreScenario.CreateSqliteAsync("tenant-a");
@@ -82,10 +81,10 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
         await scenario.Plans.SaveAsync(Plan("plan-a", "tenant-a", AlterationPlanStatus.Completed, "after"));
 
         var found = await scenario.Plans.FindAsync(new AlterationPlanFilter { Id = "plan-a" });
-        AssertUnchangedPlan(found, "tenant-a", AlterationPlanStatus.Completed, "after");
+        await AssertUnchangedPlanAsync(found, "tenant-a", AlterationPlanStatus.Completed, "after");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_WhenIncomingPlanTenantDiffers_PreservesExistingTenantId()
     {
         await using var scenario = await AlterationStoreScenario.CreateSqliteAsync("tenant-a");
@@ -94,10 +93,10 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
         await scenario.Plans.SaveAsync(Plan("plan-a", "tenant-b", AlterationPlanStatus.Completed, "after"));
 
         var found = await scenario.Plans.FindAsync(new AlterationPlanFilter { Id = "plan-a" });
-        AssertUnchangedPlan(found, "tenant-a", AlterationPlanStatus.Completed, "after");
+        await AssertUnchangedPlanAsync(found, "tenant-a", AlterationPlanStatus.Completed, "after");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_WhenAmbientIsAgnostic_UpdatesAgnosticPlan()
     {
         await using var scenario = await AlterationStoreScenario.CreateSqliteAsync(Tenant.AgnosticTenantId);
@@ -106,10 +105,10 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
         await scenario.Plans.SaveAsync(Plan("shared", Tenant.AgnosticTenantId, AlterationPlanStatus.Completed, "after"));
 
         var found = await scenario.Plans.FindAsync(new AlterationPlanFilter { Id = "shared" });
-        AssertUnchangedPlan(found, Tenant.AgnosticTenantId, AlterationPlanStatus.Completed, "after");
+        await AssertUnchangedPlanAsync(found, Tenant.AgnosticTenantId, AlterationPlanStatus.Completed, "after");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_WhenOtherNamedTenantOwnsJobId_ThrowsAndLeavesOwnerAndPayload()
     {
         await using var owner = await AlterationStoreScenario.CreateSqliteAsync("tenant-a");
@@ -117,16 +116,16 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
 
         using (owner.UseTenant("tenant-b"))
         {
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 owner.Jobs.SaveAsync(Job("shared", "tenant-b", AlterationJobStatus.Completed, "stolen")));
-            Assert.Contains("shared", ex.Message);
+            await Assert.That(ex.Message).Contains("shared");
         }
 
         var remaining = await owner.Jobs.FindAsync(new AlterationJobFilter { Id = "shared" });
-        AssertUnchangedJob(remaining, "tenant-a", AlterationJobStatus.Running, "original");
+        await AssertUnchangedJobAsync(remaining, "tenant-a", AlterationJobStatus.Running, "original");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_WhenAmbientForgesOwnerTenantIdOnJob_ThrowsAndLeavesOwnerAndPayload()
     {
         await using var owner = await AlterationStoreScenario.CreateSqliteAsync("tenant-a");
@@ -134,16 +133,16 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
 
         using (owner.UseTenant("tenant-b"))
         {
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 owner.Jobs.SaveAsync(Job("shared", "tenant-a", AlterationJobStatus.Completed, "stolen")));
-            Assert.Contains("shared", ex.Message);
+            await Assert.That(ex.Message).Contains("shared");
         }
 
         var remaining = await owner.Jobs.FindAsync(new AlterationJobFilter { Id = "shared" });
-        AssertUnchangedJob(remaining, "tenant-a", AlterationJobStatus.Running, "original");
+        await AssertUnchangedJobAsync(remaining, "tenant-a", AlterationJobStatus.Running, "original");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveManyAsync_WhenOtherNamedTenantOwnsJobId_ThrowsAndLeavesOwnerAndPayload()
     {
         await using var owner = await AlterationStoreScenario.CreateSqliteAsync("tenant-a");
@@ -151,15 +150,15 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
 
         using (owner.UseTenant("tenant-b"))
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 owner.Jobs.SaveManyAsync([Job("shared", "tenant-b", AlterationJobStatus.Completed, "stolen")]));
         }
 
         var remaining = await owner.Jobs.FindAsync(new AlterationJobFilter { Id = "shared" });
-        AssertUnchangedJob(remaining, "tenant-a", AlterationJobStatus.Running, "original");
+        await AssertUnchangedJobAsync(remaining, "tenant-a", AlterationJobStatus.Running, "original");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveManyAsync_WhenAmbientForgesOwnerTenantIdOnJob_ThrowsAndLeavesOwnerAndPayload()
     {
         await using var owner = await AlterationStoreScenario.CreateSqliteAsync("tenant-a");
@@ -167,16 +166,16 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
 
         using (owner.UseTenant("tenant-b"))
         {
-            var ex = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 owner.Jobs.SaveManyAsync([Job("shared", "tenant-a", AlterationJobStatus.Completed, "stolen")]));
-            Assert.Contains("shared", ex.Message);
+            await Assert.That(ex.Message).Contains("shared");
         }
 
         var remaining = await owner.Jobs.FindAsync(new AlterationJobFilter { Id = "shared" });
-        AssertUnchangedJob(remaining, "tenant-a", AlterationJobStatus.Running, "original");
+        await AssertUnchangedJobAsync(remaining, "tenant-a", AlterationJobStatus.Running, "original");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveManyAsync_WhenAgnosticJobExists_NamedTenantThrowsAndLeavesOwnerAndPayload()
     {
         await using var scenario = await AlterationStoreScenario.CreateSqliteAsync(Tenant.AgnosticTenantId);
@@ -184,18 +183,18 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
 
         using (scenario.UseTenant("tenant-b"))
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
                 scenario.Jobs.SaveManyAsync([Job("shared", "tenant-b", AlterationJobStatus.Completed, "stolen")]));
         }
 
         using (scenario.UseTenant(Tenant.AgnosticTenantId))
         {
             var remaining = await scenario.Jobs.FindAsync(new AlterationJobFilter { Id = "shared" });
-            AssertUnchangedJob(remaining, Tenant.AgnosticTenantId, AlterationJobStatus.Running, "original");
+            await AssertUnchangedJobAsync(remaining, Tenant.AgnosticTenantId, AlterationJobStatus.Running, "original");
         }
     }
 
-    [Fact]
+    [Test]
     public async Task SaveManyAsync_WhenSameTenantOwnsJobId_UpdatesPayload()
     {
         await using var scenario = await AlterationStoreScenario.CreateSqliteAsync("tenant-a");
@@ -204,10 +203,10 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
         await scenario.Jobs.SaveManyAsync([Job("job-a", "tenant-a", AlterationJobStatus.Completed, "after")]);
 
         var found = await scenario.Jobs.FindAsync(new AlterationJobFilter { Id = "job-a" });
-        AssertUnchangedJob(found, "tenant-a", AlterationJobStatus.Completed, "after");
+        await AssertUnchangedJobAsync(found, "tenant-a", AlterationJobStatus.Completed, "after");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveManyAsync_WhenIncomingJobTenantDiffers_PreservesExistingTenantId()
     {
         await using var scenario = await AlterationStoreScenario.CreateSqliteAsync("tenant-a");
@@ -216,10 +215,10 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
         await scenario.Jobs.SaveManyAsync([Job("job-a", "tenant-b", AlterationJobStatus.Completed, "after")]);
 
         var found = await scenario.Jobs.FindAsync(new AlterationJobFilter { Id = "job-a" });
-        AssertUnchangedJob(found, "tenant-a", AlterationJobStatus.Completed, "after");
+        await AssertUnchangedJobAsync(found, "tenant-a", AlterationJobStatus.Completed, "after");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_WhenTenancyIsDisabled_UpdatesNamedAndAgnosticPlansThroughLegacyStore()
     {
         await using var scenario = await AlterationStoreScenario.CreateSqliteAsync("tenant-b", tenantsEnabled: false);
@@ -229,11 +228,11 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
         await scenario.Plans.SaveAsync(Plan("named", "tenant-a", AlterationPlanStatus.Completed, "after"));
         await scenario.Plans.SaveAsync(Plan("agnostic", Tenant.AgnosticTenantId, AlterationPlanStatus.Completed, "after"));
 
-        AssertUnchangedPlan(await scenario.Plans.FindAsync(new AlterationPlanFilter { Id = "named" }), "tenant-a", AlterationPlanStatus.Completed, "after");
-        AssertUnchangedPlan(await scenario.Plans.FindAsync(new AlterationPlanFilter { Id = "agnostic" }), Tenant.AgnosticTenantId, AlterationPlanStatus.Completed, "after");
+        await AssertUnchangedPlanAsync(await scenario.Plans.FindAsync(new AlterationPlanFilter { Id = "named" }), "tenant-a", AlterationPlanStatus.Completed, "after");
+        await AssertUnchangedPlanAsync(await scenario.Plans.FindAsync(new AlterationPlanFilter { Id = "agnostic" }), Tenant.AgnosticTenantId, AlterationPlanStatus.Completed, "after");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveManyAsync_WhenTenancyIsDisabled_UpdatesNamedAndAgnosticJobsThroughLegacyStore()
     {
         await using var scenario = await AlterationStoreScenario.CreateSqliteAsync("tenant-b", tenantsEnabled: false);
@@ -246,11 +245,11 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
             Job("agnostic", Tenant.AgnosticTenantId, AlterationJobStatus.Completed, "after")
         ]);
 
-        AssertUnchangedJob(await scenario.Jobs.FindAsync(new AlterationJobFilter { Id = "named" }), "tenant-a", AlterationJobStatus.Completed, "after");
-        AssertUnchangedJob(await scenario.Jobs.FindAsync(new AlterationJobFilter { Id = "agnostic" }), Tenant.AgnosticTenantId, AlterationJobStatus.Completed, "after");
+        await AssertUnchangedJobAsync(await scenario.Jobs.FindAsync(new AlterationJobFilter { Id = "named" }), "tenant-a", AlterationJobStatus.Completed, "after");
+        await AssertUnchangedJobAsync(await scenario.Jobs.FindAsync(new AlterationJobFilter { Id = "agnostic" }), Tenant.AgnosticTenantId, AlterationJobStatus.Completed, "after");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_WhenDirectPlanUpdateFails_InvokesDbExceptionHandler()
     {
         var handler = new RecordingDbExceptionHandler();
@@ -260,16 +259,16 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
             commandInterceptor: new ThrowOnAlterationCommand("UPDATE \"AlterationPlans\""),
             dbExceptionHandler: handler);
 
-        var exception = await Assert.ThrowsAsync<DbUpdateException>(() => scenario.Plans.SaveAsync(Plan(
+        var exception = await Assert.ThrowsExactlyAsync<DbUpdateException>(() => scenario.Plans.SaveAsync(Plan(
             "handler-plan",
             "tenant-a",
             AlterationPlanStatus.Pending,
             "payload")));
 
-        Assert.Same(exception, handler.Exception);
+        await Assert.That(handler.Exception).IsSameReferenceAs(exception);
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_WhenDirectJobInsertFails_InvokesDbExceptionHandler()
     {
         var handler = new RecordingDbExceptionHandler();
@@ -279,16 +278,16 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
             commandInterceptor: new ThrowOnAlterationCommand("INSERT INTO \"AlterationJobs\""),
             dbExceptionHandler: handler);
 
-        var exception = await Assert.ThrowsAsync<DbUpdateException>(() => scenario.Jobs.SaveAsync(Job(
+        var exception = await Assert.ThrowsExactlyAsync<DbUpdateException>(() => scenario.Jobs.SaveAsync(Job(
             "handler-job",
             "tenant-a",
             AlterationJobStatus.Pending,
             "payload")));
 
-        Assert.Same(exception, handler.Exception);
+        await Assert.That(handler.Exception).IsSameReferenceAs(exception);
     }
 
-    [Fact]
+    [Test]
     public async Task SaveManyAsync_WhenDirectJobUpdateFails_InvokesDbExceptionHandlerAfterRetryBoundary()
     {
         var handler = new RecordingDbExceptionHandler();
@@ -298,14 +297,14 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
             commandInterceptor: new ThrowOnAlterationCommand("UPDATE \"AlterationJobs\""),
             dbExceptionHandler: handler);
 
-        var exception = await Assert.ThrowsAsync<DbUpdateException>(() => scenario.Jobs.SaveManyAsync([
+        var exception = await Assert.ThrowsExactlyAsync<DbUpdateException>(() => scenario.Jobs.SaveManyAsync([
             Job("handler-batch", "tenant-a", AlterationJobStatus.Pending, "payload")
         ]));
 
-        Assert.Same(exception, handler.Exception);
+        await Assert.That(handler.Exception).IsSameReferenceAs(exception);
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_WhenPlanIdIsHidden_DoesNotSendOwnershipConflictToDbExceptionHandler()
     {
         var handler = new RecordingDbExceptionHandler();
@@ -317,14 +316,14 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
 
         using (scenario.UseTenant("tenant-b"))
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => scenario.Plans.SaveAsync(
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => scenario.Plans.SaveAsync(
                 Plan("handler-conflict", "tenant-b", AlterationPlanStatus.Completed, "hidden")));
         }
 
-        Assert.Null(handler.Exception);
+        await Assert.That(handler.Exception).IsNull();
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_WhenJobIdIsHidden_DoesNotSendOwnershipConflictToDbExceptionHandler()
     {
         var handler = new RecordingDbExceptionHandler();
@@ -336,14 +335,14 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
 
         using (scenario.UseTenant("tenant-b"))
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => scenario.Jobs.SaveAsync(
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => scenario.Jobs.SaveAsync(
                 Job("handler-conflict", "tenant-b", AlterationJobStatus.Completed, "hidden")));
         }
 
-        Assert.Null(handler.Exception);
+        await Assert.That(handler.Exception).IsNull();
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_ConcurrentSameTenantPlanId_BothWritersSucceedAndOnePayloadWins()
     {
         var gate = new GateFirstAlterationUpdates("AlterationPlans");
@@ -354,19 +353,19 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
             Capture(() => pair.First.Plans.SaveAsync(Plan("race", "tenant-a", AlterationPlanStatus.Running, "from-a"))),
             Capture(() => pair.Second.Plans.SaveAsync(Plan("race", "tenant-a", AlterationPlanStatus.Completed, "from-b"))));
 
-        Assert.All(results, Assert.Null);
-        Assert.Equal(3, gate.MatchedCommandCount);
+        await Assert.That(results).All(x => x is null);
+        await Assert.That(gate.MatchedCommandCount).IsEqualTo(3);
 
         using (pair.First.UseTenant("tenant-a"))
         {
             var found = await pair.First.Plans.FindAsync(new AlterationPlanFilter { Id = "race" });
-            Assert.NotNull(found);
-            Assert.Equal("tenant-a", found.TenantId);
-            Assert.Contains(Payload(found), new[] { "from-a", "from-b" });
+            await Assert.That(found).IsNotNull();
+            await Assert.That(found.TenantId).IsEqualTo("tenant-a");
+            await Assert.That(new[] { "from-a", "from-b" }).Contains(Payload(found));
         }
     }
 
-    [Fact]
+    [Test]
     public async Task SaveManyAsync_WhenBatchCollides_RollsBackEarlierInserts()
     {
         await using var owner = await AlterationStoreScenario.CreateSqliteAsync("tenant-a");
@@ -374,20 +373,20 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
 
         using (owner.UseTenant("tenant-b"))
         {
-            await Assert.ThrowsAsync<InvalidOperationException>(() => owner.Jobs.SaveManyAsync(
+            await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => owner.Jobs.SaveManyAsync(
             [
                 Job("new-from-b", "tenant-b", AlterationJobStatus.Pending, "should-roll-back"),
                 Job("owned", "tenant-b", AlterationJobStatus.Completed, "stolen")
             ]));
 
-            Assert.Null(await owner.Jobs.FindAsync(new AlterationJobFilter { Id = "new-from-b" }));
+            await Assert.That(await owner.Jobs.FindAsync(new AlterationJobFilter { Id = "new-from-b" })).IsNull();
         }
 
         var remaining = await owner.Jobs.FindAsync(new AlterationJobFilter { Id = "owned" });
-        AssertUnchangedJob(remaining, "tenant-a", AlterationJobStatus.Running, "original");
+        await AssertUnchangedJobAsync(remaining, "tenant-a", AlterationJobStatus.Running, "original");
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_ConcurrentNamedTenantsOnEmptyPlanId_OneOwnerKeepsPayload()
     {
         var gate = new GateFirstAlterationUpdates("AlterationPlans");
@@ -398,15 +397,15 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
             Capture(() => pair.First.Plans.SaveAsync(Plan("race", "tenant-a", AlterationPlanStatus.Running, "from-a"))),
             Capture(() => pair.Second.Plans.SaveAsync(Plan("race", "tenant-b", AlterationPlanStatus.Completed, "from-b"))));
 
-        Assert.Equal(1, results.Count(ex => ex is null));
-        Assert.Equal(1, results.Count(ex => ex is InvalidOperationException));
-        Assert.Equal(3, gate.MatchedCommandCount);
+        await Assert.That(results.Count(ex => ex is null)).IsEqualTo(1);
+        await Assert.That(results.Count(ex => ex is InvalidOperationException)).IsEqualTo(1);
+        await Assert.That(gate.MatchedCommandCount).IsEqualTo(3);
 
         var winnerIsA = results[0] is null;
         using (pair.First.UseTenant(winnerIsA ? "tenant-a" : "tenant-b"))
         {
             var remaining = await pair.First.Plans.FindAsync(new AlterationPlanFilter { Id = "race" });
-            AssertUnchangedPlan(
+            await AssertUnchangedPlanAsync(
                 remaining,
                 winnerIsA ? "tenant-a" : "tenant-b",
                 winnerIsA ? AlterationPlanStatus.Running : AlterationPlanStatus.Completed,
@@ -414,7 +413,7 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_ConcurrentNamedVersusAgnosticOnExistingStarPlan_PreservesStarPayload()
     {
         var gate = new GateFirstAlterationUpdates("AlterationPlans");
@@ -426,23 +425,23 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
             Capture(() => pair.First.Plans.SaveAsync(Plan("shared", Tenant.AgnosticTenantId, AlterationPlanStatus.Failed, "agnostic-update"))),
             Capture(() => pair.Second.Plans.SaveAsync(Plan("shared", "tenant-b", AlterationPlanStatus.Completed, "stolen"))));
 
-        Assert.IsType<InvalidOperationException>(results[1]);
-        Assert.Equal(3, gate.MatchedCommandCount);
+        await Assert.That(results[1]).IsTypeOf<InvalidOperationException>();
+        await Assert.That(gate.MatchedCommandCount).IsEqualTo(3);
 
         using (pair.First.UseTenant(Tenant.AgnosticTenantId))
         {
             var remaining = await pair.First.Plans.FindAsync(new AlterationPlanFilter { Id = "shared" });
-            Assert.NotNull(remaining);
-            Assert.Equal(Tenant.AgnosticTenantId, remaining.TenantId);
-            Assert.NotEqual("stolen", Payload(remaining));
+            await Assert.That(remaining).IsNotNull();
+            await Assert.That(remaining.TenantId).IsEqualTo(Tenant.AgnosticTenantId);
+            await Assert.That(Payload(remaining)).IsNotEqualTo("stolen");
             if (results[0] is null)
-                AssertUnchangedPlan(remaining, Tenant.AgnosticTenantId, AlterationPlanStatus.Failed, "agnostic-update");
+                await AssertUnchangedPlanAsync(remaining, Tenant.AgnosticTenantId, AlterationPlanStatus.Failed, "agnostic-update");
             else
-                AssertUnchangedPlan(remaining, Tenant.AgnosticTenantId, AlterationPlanStatus.Running, "original");
+                await AssertUnchangedPlanAsync(remaining, Tenant.AgnosticTenantId, AlterationPlanStatus.Running, "original");
         }
     }
 
-    [Fact]
+    [Test]
     public async Task SaveManyAsync_ConcurrentNamedTenantsOnEmptyJobId_OneOwnerKeepsPayload()
     {
         var gate = new GateFirstAlterationUpdates("AlterationJobs", gateBeforeExecution: true);
@@ -458,16 +457,16 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
             Capture(() => pair.First.Jobs.SaveManyAsync([Job("race", "tenant-a", AlterationJobStatus.Running, "from-a")])),
             Capture(() => pair.Second.Jobs.SaveManyAsync([Job("race", "tenant-b", AlterationJobStatus.Completed, "from-b")])));
 
-        Assert.Equal(1, results.Count(ex => ex is null));
-        Assert.Equal(1, results.Count(ex => ex is InvalidOperationException));
-        Assert.True(gate.BothReached);
-        Assert.Equal(3, gate.MatchedCommandCount);
+        await Assert.That(results.Count(ex => ex is null)).IsEqualTo(1);
+        await Assert.That(results.Count(ex => ex is InvalidOperationException)).IsEqualTo(1);
+        await Assert.That(gate.BothReached).IsTrue();
+        await Assert.That(gate.MatchedCommandCount).IsEqualTo(3);
 
         var winnerIsA = results[0] is null;
         using (pair.First.UseTenant(winnerIsA ? "tenant-a" : "tenant-b"))
         {
             var remaining = await pair.First.Jobs.FindAsync(new AlterationJobFilter { Id = "race" });
-            AssertUnchangedJob(
+            await AssertUnchangedJobAsync(
                 remaining,
                 winnerIsA ? "tenant-a" : "tenant-b",
                 winnerIsA ? AlterationJobStatus.Running : AlterationJobStatus.Completed,
@@ -475,7 +474,7 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task SaveManyAsync_ConcurrentNamedVersusAgnosticOnExistingStarJob_PreservesStarPayload()
     {
         await using var pair = await AlterationStoreScenario.CreateSqlitePairAsync(Tenant.AgnosticTenantId, "tenant-b");
@@ -485,23 +484,23 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
             Capture(() => pair.First.Jobs.SaveManyAsync([Job("shared", Tenant.AgnosticTenantId, AlterationJobStatus.Failed, "agnostic-update")])),
             Capture(() => pair.Second.Jobs.SaveManyAsync([Job("shared", "tenant-b", AlterationJobStatus.Completed, "stolen")])));
 
-        Assert.NotNull(results[1]);
-        Assert.IsType<InvalidOperationException>(results[1]);
+        await Assert.That(results[1]).IsNotNull();
+        await Assert.That(results[1]).IsTypeOf<InvalidOperationException>();
 
         using (pair.First.UseTenant(Tenant.AgnosticTenantId))
         {
             var remaining = await pair.First.Jobs.FindAsync(new AlterationJobFilter { Id = "shared" });
-            Assert.NotNull(remaining);
-            Assert.Equal(Tenant.AgnosticTenantId, remaining.TenantId);
-            Assert.NotEqual("stolen", remaining.WorkflowInstanceId);
+            await Assert.That(remaining).IsNotNull();
+            await Assert.That(remaining.TenantId).IsEqualTo(Tenant.AgnosticTenantId);
+            await Assert.That(remaining.WorkflowInstanceId).IsNotEqualTo("stolen");
             if (results[0] is null)
-                AssertUnchangedJob(remaining, Tenant.AgnosticTenantId, AlterationJobStatus.Failed, "agnostic-update");
+                await AssertUnchangedJobAsync(remaining, Tenant.AgnosticTenantId, AlterationJobStatus.Failed, "agnostic-update");
             else
-                AssertUnchangedJob(remaining, Tenant.AgnosticTenantId, AlterationJobStatus.Running, "original");
+                await AssertUnchangedJobAsync(remaining, Tenant.AgnosticTenantId, AlterationJobStatus.Running, "original");
         }
     }
 
-    [Fact]
+    [Test]
     public async Task SaveAsync_ConcurrentNamedTenantsOnExistingNamedPlan_PreservesOriginalOwnerAndPayload()
     {
         await using var pair = await AlterationStoreScenario.CreateSqlitePairAsync("tenant-b", "tenant-c");
@@ -512,10 +511,10 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
             Capture(() => pair.First.Plans.SaveAsync(Plan("shared", "tenant-b", AlterationPlanStatus.Completed, "from-b"))),
             Capture(() => pair.Second.Plans.SaveAsync(Plan("shared", "tenant-c", AlterationPlanStatus.Failed, "from-c"))));
 
-        Assert.All(results, ex => Assert.IsType<InvalidOperationException>(ex));
+        await Assert.That(results).All(ex => ex is InvalidOperationException);
 
         var remaining = await owner.Plans.FindAsync(new AlterationPlanFilter { Id = "shared" });
-        AssertUnchangedPlan(remaining, "tenant-a", AlterationPlanStatus.Running, "original");
+        await AssertUnchangedPlanAsync(remaining, "tenant-a", AlterationPlanStatus.Running, "original");
     }
 
     private static async Task<Exception?> Capture(Func<Task> action)
@@ -531,25 +530,25 @@ public sealed class EFCoreAlterationStoreTenantOwnershipTests
         }
     }
 
-    private static void AssertUnchangedPlan(AlterationPlan? plan, string tenantId, AlterationPlanStatus status, string payload)
+    private static async Task AssertUnchangedPlanAsync(AlterationPlan? plan, string tenantId, AlterationPlanStatus status, string payload)
     {
-        Assert.NotNull(plan);
-        Assert.Equal(tenantId, plan.TenantId);
-        Assert.Equal(status, plan.Status);
-        Assert.Equal(payload, Payload(plan));
+        await Assert.That(plan).IsNotNull();
+        await Assert.That(plan.TenantId).IsEqualTo(tenantId);
+        await Assert.That(plan.Status).IsEqualTo(status);
+        await Assert.That(Payload(plan)).IsEqualTo(payload);
     }
 
-    private static void AssertUnchangedJob(AlterationJob? job, string tenantId, AlterationJobStatus status, string payload)
+    private static async Task AssertUnchangedJobAsync(AlterationJob? job, string tenantId, AlterationJobStatus status, string payload)
     {
-        Assert.NotNull(job);
-        Assert.Equal(tenantId, job.TenantId);
-        Assert.Equal(status, job.Status);
-        Assert.Equal(payload, job.WorkflowInstanceId);
-        Assert.Equal(payload, job.Log?.FirstOrDefault()?.Message);
+        await Assert.That(job).IsNotNull();
+        await Assert.That(job.TenantId).IsEqualTo(tenantId);
+        await Assert.That(job.Status).IsEqualTo(status);
+        await Assert.That(job.WorkflowInstanceId).IsEqualTo(payload);
+        await Assert.That(job.Log?.FirstOrDefault()?.Message).IsEqualTo(payload);
     }
 
     private static string Payload(AlterationPlan plan) =>
-        Assert.IsType<TestAlteration>(Assert.Single(plan.Alterations)).Value;
+        plan.Alterations.OfType<TestAlteration>().Single().Value;
 
     private static AlterationPlan Plan(string id, string? tenantId, AlterationPlanStatus status, string payload) =>
         new()

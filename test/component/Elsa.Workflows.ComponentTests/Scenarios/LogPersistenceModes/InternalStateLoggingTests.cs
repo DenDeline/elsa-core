@@ -14,41 +14,39 @@ namespace Elsa.Workflows.ComponentTests.Scenarios.LogPersistenceModes;
 
 public class InternalStateLoggingTests(App app) : AppComponentTest(app)
 {
-    [Fact]
+    [Test]
     public async Task ActivityInternalState_ShouldBeIndependentOfDefaultMode()
     {
         var records = await ExecuteAndGetWriteLinesAsync("internal-state-logging-activity");
 
-        AssertInternalState(GetRecord(records, "WriteLine1"), textIncluded: false, internalStateIncluded: true);
-        AssertInternalState(GetRecord(records, "WriteLine2"), textIncluded: true, internalStateIncluded: false);
+        await AssertInternalStateAsync(await GetRecordAsync(records, "WriteLine1"), textIncluded: false, internalStateIncluded: true);
+        await AssertInternalStateAsync(await GetRecordAsync(records, "WriteLine2"), textIncluded: true, internalStateIncluded: false);
     }
 
-    [Fact]
+    [Test]
     public async Task WorkflowInternalState_ShouldApplyWhenActivityInternalStateIsMissing()
     {
         var records = await ExecuteAndGetWriteLinesAsync("internal-state-logging-workflow");
 
-        AssertInternalState(GetRecord(records, "WriteLine1"), textIncluded: false, internalStateIncluded: true);
-        AssertInternalState(GetRecord(records, "WriteLine2"), textIncluded: false, internalStateIncluded: false);
+        await AssertInternalStateAsync(await GetRecordAsync(records, "WriteLine1"), textIncluded: false, internalStateIncluded: true);
+        await AssertInternalStateAsync(await GetRecordAsync(records, "WriteLine2"), textIncluded: false, internalStateIncluded: false);
     }
 
-    private static ActivityExecutionRecord GetRecord(IReadOnlyList<ActivityExecutionRecord> records, string activityName)
-    {
-        return records.Single(x => x.ActivityName == activityName);
-    }
+    private static async Task<ActivityExecutionRecord> GetRecordAsync(IReadOnlyList<ActivityExecutionRecord> records, string activityName) =>
+        await Assert.That(records).HasSingleItem(x => x.ActivityName == activityName);
 
-    private static void AssertInternalState(ActivityExecutionRecord record, bool textIncluded, bool internalStateIncluded)
+    private static async Task AssertInternalStateAsync(ActivityExecutionRecord record, bool textIncluded, bool internalStateIncluded)
     {
-        Assert.Equal(textIncluded, record.ActivityState?.ContainsKey(nameof(WriteLine.Text)) == true);
+        await Assert.That(record.ActivityState?.ContainsKey(nameof(WriteLine.Text)) == true).IsEqualTo(textIncluded);
 
         if (internalStateIncluded)
         {
-            Assert.NotNull(record.Properties);
+            await Assert.That(record.Properties).IsNotNull();
             return;
         }
 
-        Assert.Null(record.Properties);
-        Assert.Null(record.Payload);
+        await Assert.That(record.Properties).IsNull();
+        await Assert.That(record.Payload).IsNull();
     }
 
     private async Task<IReadOnlyList<ActivityExecutionRecord>> ExecuteAndGetWriteLinesAsync(string workflowDefinitionId)

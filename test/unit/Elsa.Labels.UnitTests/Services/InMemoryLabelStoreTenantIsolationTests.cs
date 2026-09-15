@@ -12,7 +12,8 @@ namespace Elsa.Labels.UnitTests.Services;
 /// </summary>
 public class InMemoryLabelStoreTenantIsolationTests
 {
-    [Fact(DisplayName = "ListAsync hides other tenants and keeps * visible")]
+    [Test]
+    [DisplayName("ListAsync hides other tenants and keeps * visible")]
     public async Task ListAsync_HidesOtherTenants()
     {
         var store = CreateStore("tenant-a");
@@ -20,13 +21,14 @@ public class InMemoryLabelStoreTenantIsolationTests
 
         var found = (await store.ListAsync()).Items.ToList();
 
-        Assert.Equal(2, found.Count);
-        Assert.Contains(found, x => x.Id == "label-a");
-        Assert.Contains(found, x => x.Id == "label-star");
-        Assert.DoesNotContain(found, x => x.Id == "label-b");
+        await Assert.That(found.Count).IsEqualTo(2);
+        await Assert.That(found).Contains(x => x.Id == "label-a");
+        await Assert.That(found).Contains(x => x.Id == "label-star");
+        await Assert.That(found).DoesNotContain(x => x.Id == "label-b");
     }
 
-    [Fact(DisplayName = "FindByIdAsync does not return another tenant's row")]
+    [Test]
+    [DisplayName("FindByIdAsync does not return another tenant's row")]
     public async Task FindByIdAsync_WhenOtherTenant_ReturnsNull()
     {
         var store = CreateStore("tenant-a");
@@ -34,10 +36,11 @@ public class InMemoryLabelStoreTenantIsolationTests
 
         var found = await store.FindByIdAsync("label-b");
 
-        Assert.Null(found);
+        await Assert.That(found).IsNull();
     }
 
-    [Fact(DisplayName = "FindManyByIdAsync hides other tenants")]
+    [Test]
+    [DisplayName("FindManyByIdAsync hides other tenants")]
     public async Task FindManyByIdAsync_HidesOtherTenants()
     {
         var store = CreateStore("tenant-a");
@@ -45,13 +48,14 @@ public class InMemoryLabelStoreTenantIsolationTests
 
         var found = (await store.FindManyByIdAsync(["label-a", "label-b", "label-star"], CancellationToken.None)).ToList();
 
-        Assert.Equal(2, found.Count);
-        Assert.Contains(found, x => x.Id == "label-a");
-        Assert.Contains(found, x => x.Id == "label-star");
-        Assert.DoesNotContain(found, x => x.Id == "label-b");
+        await Assert.That(found.Count).IsEqualTo(2);
+        await Assert.That(found).Contains(x => x.Id == "label-a");
+        await Assert.That(found).Contains(x => x.Id == "label-star");
+        await Assert.That(found).DoesNotContain(x => x.Id == "label-b");
     }
 
-    [Fact(DisplayName = "DeleteAsync does not remove another tenant's rows or associations")]
+    [Test]
+    [DisplayName("DeleteAsync does not remove another tenant's rows or associations")]
     public async Task DeleteAsync_DoesNotDeleteOtherTenantRows()
     {
         var labels = new MemoryStore<Label>();
@@ -66,14 +70,15 @@ public class InMemoryLabelStoreTenantIsolationTests
         var remainingForB = await tenantB.FindByIdAsync("label-b");
         var remainingAssociations = (await tenantBAssociations.FindByLabelIdsAsync(["label-b"])).ToList();
 
-        Assert.False(deleted);
-        Assert.NotNull(remainingForB);
-        Assert.Equal("label-b", remainingForB.Id);
-        Assert.Single(remainingAssociations);
-        Assert.Equal("assoc-b", remainingAssociations[0].Id);
+        await Assert.That(deleted).IsFalse();
+        await Assert.That(remainingForB).IsNotNull();
+        await Assert.That(remainingForB.Id).IsEqualTo("label-b");
+        await Assert.That(remainingAssociations).HasSingleItem();
+        await Assert.That(remainingAssociations[0].Id).IsEqualTo("assoc-b");
     }
 
-    [Fact(DisplayName = "DeleteManyAsync does not wipe other tenants' rows")]
+    [Test]
+    [DisplayName("DeleteManyAsync does not wipe other tenants' rows")]
     public async Task DeleteManyAsync_DoesNotWipeOtherTenantRows()
     {
         var labels = new MemoryStore<Label>();
@@ -86,13 +91,14 @@ public class InMemoryLabelStoreTenantIsolationTests
         var remainingForA = (await tenantA.ListAsync()).Items.ToList();
         var remainingForB = await tenantB.FindByIdAsync("label-b");
 
-        Assert.Equal(2, deleted);
-        Assert.Empty(remainingForA);
-        Assert.NotNull(remainingForB);
-        Assert.Equal("label-b", remainingForB.Id);
+        await Assert.That(deleted).IsEqualTo(2);
+        await Assert.That(remainingForA).IsEmpty();
+        await Assert.That(remainingForB).IsNotNull();
+        await Assert.That(remainingForB.Id).IsEqualTo("label-b");
     }
 
-    [Fact(DisplayName = "DeleteAsync leaves a same-ID row after another tenant replaces it")]
+    [Test]
+    [DisplayName("DeleteAsync leaves a same-ID row after another tenant replaces it")]
     public async Task DeleteAsync_WhenSameIdWasReplacedByOtherTenant_LeavesReplacement()
     {
         var labels = new MemoryStore<Label>();
@@ -105,12 +111,13 @@ public class InMemoryLabelStoreTenantIsolationTests
         var deleted = await tenantA.DeleteAsync("shared");
         var remaining = await tenantB.FindByIdAsync("shared");
 
-        Assert.False(deleted);
-        Assert.NotNull(remaining);
-        Assert.Equal("tenant-b", remaining.TenantId);
+        await Assert.That(deleted).IsFalse();
+        await Assert.That(remaining).IsNotNull();
+        await Assert.That(remaining.TenantId).IsEqualTo("tenant-b");
     }
 
-    [Fact(DisplayName = "SaveAsync stamps the ambient tenant when TenantId is unset")]
+    [Test]
+    [DisplayName("SaveAsync stamps the ambient tenant when TenantId is unset")]
     public async Task SaveAsync_WhenTenantIdUnset_StampsAmbientTenant()
     {
         var store = CreateStore("tenant-a");
@@ -118,11 +125,12 @@ public class InMemoryLabelStoreTenantIsolationTests
 
         await store.SaveAsync(label);
 
-        Assert.Equal("tenant-a", label.TenantId);
-        Assert.Equal("tenant-a", (await store.FindByIdAsync("label-new"))!.TenantId);
+        await Assert.That(label.TenantId).IsEqualTo("tenant-a");
+        await Assert.That((await store.FindByIdAsync("label-new"))!.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveAsync does not overwrite * or an explicit TenantId")]
+    [Test]
+    [DisplayName("SaveAsync does not overwrite * or an explicit TenantId")]
     public async Task SaveAsync_DoesNotOverwriteAgnosticOrExplicitTenantId()
     {
         var store = CreateStore("tenant-a");
@@ -132,30 +140,32 @@ public class InMemoryLabelStoreTenantIsolationTests
         await store.SaveAsync(agnostic);
         await store.SaveAsync(explicitTenant);
 
-        Assert.Equal(Tenant.AgnosticTenantId, agnostic.TenantId);
-        Assert.Equal("tenant-a", explicitTenant.TenantId);
+        await Assert.That(agnostic.TenantId).IsEqualTo(Tenant.AgnosticTenantId);
+        await Assert.That(explicitTenant.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "ListAsync on the default tenant includes null TenantId rows")]
+    [Test]
+    [DisplayName("ListAsync on the default tenant includes null TenantId rows")]
     public async Task ListAsync_WhenAmbientIsDefault_IncludesNullTenantId()
     {
         var store = StoreWithPreassignedRows(Tenant.DefaultTenantId);
 
         var found = (await store.ListAsync()).Items.ToList();
 
-        Assert.Single(found);
-        Assert.Equal("label-null", found[0].Id);
+        await Assert.That(found).HasSingleItem();
+        await Assert.That(found[0].Id).IsEqualTo("label-null");
     }
 
-    [Fact(DisplayName = "ListAsync on a named tenant hides null TenantId rows")]
+    [Test]
+    [DisplayName("ListAsync on a named tenant hides null TenantId rows")]
     public async Task ListAsync_WhenAmbientIsNamed_HidesNullTenantId()
     {
         var store = StoreWithPreassignedRows("tenant-a");
 
         var found = (await store.ListAsync()).Items.ToList();
 
-        Assert.Single(found);
-        Assert.Equal("label-a", found[0].Id);
+        await Assert.That(found).HasSingleItem();
+        await Assert.That(found[0].Id).IsEqualTo("label-a");
     }
 
     private static InMemoryLabelStore CreateStore(string tenantId) =>

@@ -9,9 +9,9 @@ namespace Elsa.Persistence.EFCore.UnitTests;
 
 public sealed class StoreWriteRetryTests
 {
-    [Theory]
-    [InlineData(1205)]
-    [InlineData(1213)]
+    [Test]
+    [Arguments(1205)]
+    [Arguments(1213)]
     public async Task ExecuteWriteWithRetryAsync_WhenMySqlLockFailureOccurs_RetriesWholeOperationWithFreshContextAndTransaction(int errorNumber)
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -35,14 +35,14 @@ public sealed class StoreWriteRetryTests
             },
             CancellationToken.None);
 
-        Assert.Equal(2, attempts);
-        Assert.Equal(2, transactionCount);
-        Assert.Equal(2, factory.Contexts.Count);
-        Assert.NotSame(factory.Contexts[0], factory.Contexts[1]);
-        Assert.NotEqual(factory.Contexts[0].ContextId.InstanceId, factory.Contexts[1].ContextId.InstanceId);
+        await Assert.That(attempts).IsEqualTo(2);
+        await Assert.That(transactionCount).IsEqualTo(2);
+        await Assert.That(factory.Contexts.Count).IsEqualTo(2);
+        await Assert.That(factory.Contexts[1]).IsNotSameReferenceAs(factory.Contexts[0]);
+        await Assert.That(factory.Contexts[1].ContextId.InstanceId).IsNotEqualTo(factory.Contexts[0].ContextId.InstanceId);
     }
 
-    [Fact]
+    [Test]
     public async Task ExecuteWriteWithRetryAsync_WhenMySqlDuplicateKeyOccurs_DoesNotRetry()
     {
         await using var connection = new SqliteConnection("Data Source=:memory:");
@@ -51,7 +51,7 @@ public sealed class StoreWriteRetryTests
         var store = new Store<RetryDbContext, RetryEntity>(factory, new ServiceCollection().BuildServiceProvider());
         var attempts = 0;
 
-        await Assert.ThrowsAsync<MySqlConnector.MySqlException>(() => store.ExecuteWriteWithRetryAsync(
+        await Assert.ThrowsExactlyAsync<MySqlConnector.MySqlException>(() => store.ExecuteWriteWithRetryAsync(
             (_, _) =>
             {
                 Interlocked.Increment(ref attempts);
@@ -59,8 +59,8 @@ public sealed class StoreWriteRetryTests
             },
             CancellationToken.None));
 
-        Assert.Equal(1, attempts);
-        Assert.Single(factory.Contexts);
+        await Assert.That(attempts).IsEqualTo(1);
+        await Assert.That(factory.Contexts).HasSingleItem();
     }
 
     private static DbContextOptions<RetryDbContext> CreateOptions(SqliteConnection connection) =>

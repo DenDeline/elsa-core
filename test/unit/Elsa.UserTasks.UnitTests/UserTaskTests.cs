@@ -6,7 +6,7 @@ using Elsa.UserTasks.Options;
 using Elsa.UserTasks.Permissions;
 using Elsa.UserTasks.Repositories;
 using Elsa.UserTasks.Services;
-using Xunit;
+using System.Threading.Tasks;
 
 namespace Elsa.UserTasks.UnitTests;
 
@@ -14,7 +14,7 @@ public class UserTaskTests
 {
     private readonly UserTaskTestFixture _fixture = new();
 
-    [Fact]
+    [Test]
     public async Task ClaimsResolver_PreservesExternalGroupClaimValues()
     {
         var resolver = new DefaultClaimsIdentityResolver(Microsoft.Extensions.Options.Options.Create(new UserTasksOptions { DefaultTenantId = "tenant", DefaultProvider = "oidc" }));
@@ -25,16 +25,15 @@ public class UserTaskTests
             new Claim("permission", UserTaskTestFixture.Grant(CoreVerbs.View))
         ], "test"));
 
-        var actor = await resolver.ResolveAsync(principal);
+        var actor = await Assert.That(await resolver.ResolveAsync(principal)).IsNotNull();
 
-        Assert.NotNull(actor);
-        Assert.Contains(actor.Groups, x => x.Id == "group,with;delimiters");
-        Assert.Contains(actor.Groups, x => x.Id == "finance");
-        Assert.Equal("tenant", actor.Subject.TenantId);
-        Assert.Equal("oidc", actor.Subject.Provider);
+        await Assert.That(actor.Groups).Contains(x => x.Id == "group,with;delimiters");
+        await Assert.That(actor.Groups).Contains(x => x.Id == "finance");
+        await Assert.That(actor.Subject.TenantId).IsEqualTo("tenant");
+        await Assert.That(actor.Subject.Provider).IsEqualTo("oidc");
     }
 
-    [Fact]
+    [Test]
     public async Task Repository_CursorIsStableAndTotalCountIgnoresCursor()
     {
         var repository = new InMemoryUserTaskRepository();
@@ -44,23 +43,23 @@ public class UserTaskTests
         var first = await repository.QueryAsync(new() { TenantId = "tenant", Limit = 2, IncludeTotalCount = true });
         var second = await repository.QueryAsync(new() { TenantId = "tenant", Limit = 2, Cursor = first.NextCursor, IncludeTotalCount = true });
 
-        Assert.Equal(3, first.TotalCount);
-        Assert.Equal(3, second.TotalCount);
-        Assert.Single(second.Items);
-        Assert.DoesNotContain(first.Items.Select(x => x.Id), x => second.Items.Any(y => y.Id == x));
+        await Assert.That(first.TotalCount).IsEqualTo(3);
+        await Assert.That(second.TotalCount).IsEqualTo(3);
+        await Assert.That(second.Items).HasSingleItem();
+        await Assert.That(first.Items.Select(x => x.Id)).DoesNotContain(x => second.Items.Any(y => y.Id == x));
     }
 
-    [Theory]
-    [InlineData("created", false)]
-    [InlineData("created", true)]
-    [InlineData("due", false)]
-    [InlineData("due", true)]
-    [InlineData("priority", false)]
-    [InlineData("priority", true)]
-    [InlineData("title", false)]
-    [InlineData("title", true)]
-    [InlineData("updated", false)]
-    [InlineData("updated", true)]
+    [Test]
+    [Arguments("created", false)]
+    [Arguments("created", true)]
+    [Arguments("due", false)]
+    [Arguments("due", true)]
+    [Arguments("priority", false)]
+    [Arguments("priority", true)]
+    [Arguments("title", false)]
+    [Arguments("title", true)]
+    [Arguments("updated", false)]
+    [Arguments("updated", true)]
     public async Task Repository_CursorCoversSupportedSortsAndDirections(string sort, bool descending)
     {
         var repository = new InMemoryUserTaskRepository();
@@ -73,12 +72,12 @@ public class UserTaskTests
         var second = await repository.QueryAsync(new() { TenantId = "tenant", Limit = 2, Sort = sort, Descending = descending, Cursor = first.NextCursor, IncludeTotalCount = true });
         var ids = first.Items.Concat(second.Items).Select(x => x.Id).ToArray();
 
-        Assert.Equal(3, first.TotalCount);
-        Assert.Equal(3, second.TotalCount);
-        Assert.Equal(3, ids.Distinct().Count());
+        await Assert.That(first.TotalCount).IsEqualTo(3);
+        await Assert.That(second.TotalCount).IsEqualTo(3);
+        await Assert.That(ids.Distinct().Count()).IsEqualTo(3);
     }
 
-    [Fact]
+    [Test]
     public async Task Repository_DescendingSortUsesAscendingIdTiebreaker()
     {
         var repository = new InMemoryUserTaskRepository();
@@ -88,10 +87,10 @@ public class UserTaskTests
 
         var page = await repository.QueryAsync(new() { TenantId = "tenant", Sort = "priority", Descending = true, Limit = 10 });
 
-        Assert.Equal(["task-a", "task-b"], page.Items.Select(x => x.Id));
+        await Assert.That(page.Items.Select(x => x.Id)).IsEquivalentTo(["task-a", "task-b"], TUnit.Assertions.Enums.CollectionOrdering.Matching);
     }
 
-    [Fact]
+    [Test]
     public async Task Repository_TitleCursorUsesTheSameComparisonForTies()
     {
         var repository = new InMemoryUserTaskRepository();
@@ -101,11 +100,13 @@ public class UserTaskTests
         var first = await repository.QueryAsync(new() { TenantId = "tenant", Sort = "title", Limit = 1 });
         var second = await repository.QueryAsync(new() { TenantId = "tenant", Sort = "title", Limit = 1, Cursor = first.NextCursor });
 
-        Assert.Equal("task-a", Assert.Single(first.Items).Id);
-        Assert.Equal("task-b", Assert.Single(second.Items).Id);
+        var firstTask = await Assert.That(first.Items).HasSingleItem();
+        var secondTask = await Assert.That(second.Items).HasSingleItem();
+        await Assert.That(firstTask.Id).IsEqualTo("task-a");
+        await Assert.That(secondTask.Id).IsEqualTo("task-b");
     }
 
-    [Fact]
+    [Test]
     public async Task Repository_TitleCursorDoesNotDropUnicodeVariantTitles()
     {
         var repository = new InMemoryUserTaskRepository();
@@ -117,11 +118,11 @@ public class UserTaskTests
         var first = await repository.QueryAsync(new() { TenantId = "tenant", Sort = "title", Limit = 1 });
         var second = await repository.QueryAsync(new() { TenantId = "tenant", Sort = "title", Limit = 1, Cursor = first.NextCursor });
 
-        Assert.Equal(2, first.Items.Concat(second.Items).Select(x => x.Id).Distinct().Count());
-        Assert.Null(second.NextCursor);
+        await Assert.That(first.Items.Concat(second.Items).Select(x => x.Id).Distinct().Count()).IsEqualTo(2);
+        await Assert.That(second.NextCursor).IsNull();
     }
 
-    [Fact]
+    [Test]
     public async Task Repository_UnknownSortCompletedUsesCreatedOrder()
     {
         var repository = new InMemoryUserTaskRepository();
@@ -132,50 +133,49 @@ public class UserTaskTests
         var created = await repository.QueryAsync(new() { TenantId = "tenant", Sort = "created", Limit = 10 });
         var completed = await repository.QueryAsync(new() { TenantId = "tenant", Sort = "completed", Limit = 10 });
 
-        Assert.Equal(created.Items.Select(x => x.Id), completed.Items.Select(x => x.Id));
+        await Assert.That(completed.Items.Select(x => x.Id)).IsEquivalentTo(created.Items.Select(x => x.Id), TUnit.Assertions.Enums.CollectionOrdering.Matching);
     }
 
-    [Fact]
+    [Test]
     public async Task Manager_HidesProtectedFieldsUntilClaimAndCompletesAfterBookmarkFinalization()
     {
         var actor = _fixture.Actor("user-1");
         var task = await _fixture.ProjectAsync(actor.Subject);
 
-        var candidateDetail = await _fixture.Manager.GetAsync(UserTaskTestFixture.TenantId, task.Id, actor);
-        Assert.NotNull(candidateDetail);
-        Assert.Null(candidateDetail.Instructions);
-        Assert.False(candidateDetail.Disclosure.CanViewProtected);
+        var candidateDetail = await Assert.That(await _fixture.Manager.GetAsync(UserTaskTestFixture.TenantId, task.Id, actor)).IsNotNull();
+        await Assert.That(candidateDetail.Instructions).IsNull();
+        await Assert.That(candidateDetail.Disclosure.CanViewProtected).IsFalse();
 
         var claimed = await _fixture.Manager.ClaimAsync(UserTaskTestFixture.TenantId, task.Id, new(1, "claim-1"), actor);
-        Assert.True(claimed.Accepted);
+        await Assert.That(claimed.Accepted).IsTrue();
         var assignedDetail = await _fixture.Manager.GetAsync(UserTaskTestFixture.TenantId, task.Id, actor);
-        Assert.Equal("private instructions", assignedDetail!.Instructions);
-        Assert.True(assignedDetail.Disclosure.CanViewProtected);
-        Assert.NotEmpty(assignedDetail.Actions);
+        await Assert.That(assignedDetail!.Instructions).IsEqualTo("private instructions");
+        await Assert.That(assignedDetail.Disclosure.CanViewProtected).IsTrue();
+        await Assert.That(assignedDetail.Actions).IsNotEmpty();
 
         var completing = await _fixture.Manager.CompleteAsync(UserTaskTestFixture.TenantId, task.Id, new(claimed.Task.Revision, "complete-1", "Approve"), actor);
-        Assert.True(completing.Accepted);
-        Assert.Equal(UserTaskStatus.Completing, completing.Task.Status);
-        Assert.Equal(actor.Subject, _fixture.Resumer.LastStimulus!.CompletedBy);
+        await Assert.That(completing.Accepted).IsTrue();
+        await Assert.That(completing.Task.Status).IsEqualTo(UserTaskStatus.Completing);
+        await Assert.That(_fixture.Resumer.LastStimulus!.CompletedBy).IsEqualTo(actor.Subject);
 
         var retry = await _fixture.Manager.CompleteAsync(UserTaskTestFixture.TenantId, task.Id, new(claimed.Task.Revision, "complete-1", "Approve"), actor);
-        Assert.True(retry.Accepted);
-        Assert.Equal(completing.Operation.OperationId, retry.Operation.OperationId);
+        await Assert.That(retry.Accepted).IsTrue();
+        await Assert.That(retry.Operation.OperationId).IsEqualTo(completing.Operation.OperationId);
 
         var divergent = await _fixture.Manager.CompleteAsync(UserTaskTestFixture.TenantId, task.Id, new(claimed.Task.Revision, "complete-1", "Reject"), actor);
-        Assert.False(divergent.Accepted);
-        Assert.Equal("idempotency-conflict", divergent.ConflictCode);
+        await Assert.That(divergent.Accepted).IsFalse();
+        await Assert.That(divergent.ConflictCode).IsEqualTo("idempotency-conflict");
 
         await _fixture.Projection.FinalizeBookmarkRemovalAsync(new(UserTaskTestFixture.TenantId, task.Id, task.BookmarkId, _fixture.Clock.UtcNow));
         var completed = await _fixture.Repository.GetAsync(UserTaskTestFixture.TenantId, task.Id);
-        Assert.Equal(UserTaskStatus.Completed, completed!.Status);
+        await Assert.That(completed!.Status).IsEqualTo(UserTaskStatus.Completed);
 
         var terminalRetry = await _fixture.Manager.CompleteAsync(UserTaskTestFixture.TenantId, task.Id, new(claimed.Task.Revision, "complete-1", "Approve"), actor);
-        Assert.True(terminalRetry.Accepted);
-        Assert.Equal(completing.Operation.OperationId, terminalRetry.Operation.OperationId);
+        await Assert.That(terminalRetry.Accepted).IsTrue();
+        await Assert.That(terminalRetry.Operation.OperationId).IsEqualTo(completing.Operation.OperationId);
     }
 
-    [Fact]
+    [Test]
     public async Task Policy_RequiresOperationPermissionInAdditionToCandidateRelationship()
     {
         var actor = _fixture.Actor("user-1", UserTaskTestFixture.Grant(CoreVerbs.View));
@@ -183,11 +183,11 @@ public class UserTaskTests
 
         var claim = await _fixture.Manager.ClaimAsync(UserTaskTestFixture.TenantId, task.Id, new(1, "claim-no-permission"), actor);
 
-        Assert.False(claim.Accepted);
-        Assert.Equal("forbidden", claim.ConflictCode);
+        await Assert.That(claim.Accepted).IsFalse();
+        await Assert.That(claim.ConflictCode).IsEqualTo("forbidden");
     }
 
-    [Fact]
+    [Test]
     public async Task Policy_ManagerFlagAloneDoesNotGrantManagementWithoutThePermission()
     {
         var actor = _fixture.Actor("user-1", UserTaskTestFixture.Grant(CoreVerbs.View), UserTaskTestFixture.Grant(UserTaskVerbs.Assign)) with { IsManager = true };
@@ -195,35 +195,34 @@ public class UserTaskTests
         var task = await _fixture.ProjectAsync(candidate.Subject);
 
         // The host set IsManager but never granted user-tasks:supervise, so management must still be refused.
-        Assert.False(await _fixture.Policy.AuthorizeAsync(task, actor, UserTaskAccessOperation.Assign));
-        Assert.Null(await _fixture.Policy.CreateScopeAsync(actor, UserTaskQueryScopeKind.All));
+        await Assert.That(await _fixture.Policy.AuthorizeAsync(task, actor, UserTaskAccessOperation.Assign)).IsFalse();
+        await Assert.That(await _fixture.Policy.CreateScopeAsync(actor, UserTaskQueryScopeKind.All)).IsNull();
     }
 
-    [Fact]
+    [Test]
     public async Task Policy_WildcardPermissionGrantSatisfiesManagementChecks()
     {
         var root = _fixture.Actor("root", "*") with { IsManager = true };
         var task = await _fixture.ProjectAsync(_fixture.Actor("user-1").Subject);
 
-        Assert.True(await _fixture.Policy.AuthorizeAsync(task, root, UserTaskAccessOperation.Manage));
-        var scope = await _fixture.Policy.CreateScopeAsync(root, UserTaskQueryScopeKind.All);
-        Assert.NotNull(scope);
-        Assert.True(scope.IsManager);
+        await Assert.That(await _fixture.Policy.AuthorizeAsync(task, root, UserTaskAccessOperation.Manage)).IsTrue();
+        var scope = await Assert.That(await _fixture.Policy.CreateScopeAsync(root, UserTaskQueryScopeKind.All)).IsNotNull();
+        await Assert.That(scope.IsManager).IsTrue();
     }
 
-    [Theory]
-    [InlineData(UserTaskQueryScopeKind.All)]
-    [InlineData(UserTaskQueryScopeKind.NeedsAttention)]
+    [Test]
+    [Arguments(UserTaskQueryScopeKind.All)]
+    [Arguments(UserTaskQueryScopeKind.NeedsAttention)]
     public async Task Query_ManagerOnlyScopesAreDeniedRatherThanSilentlyNarrowed(UserTaskQueryScopeKind kind)
     {
         var actor = _fixture.Actor("user-1");
         await _fixture.ProjectAsync(actor.Subject);
 
         // A denial must be distinguishable from an empty page, or the endpoint would answer 200 with no rows.
-        Assert.Null(await _fixture.Manager.QueryAsync(new() { TenantId = UserTaskTestFixture.TenantId }, kind, actor));
+        await Assert.That(await _fixture.Manager.QueryAsync(new() { TenantId = UserTaskTestFixture.TenantId }, kind, actor)).IsNull();
     }
 
-    [Fact]
+    [Test]
     public async Task Query_AvailableScopeExcludesClaimedTasksAndExcludedCandidates()
     {
         var candidate = _fixture.Actor("user-1");
@@ -234,26 +233,22 @@ public class UserTaskTests
             ExcludedUsers = [excluded.Subject]
         });
 
-        var availableToCandidate = await _fixture.Manager.QueryAsync(new() { TenantId = UserTaskTestFixture.TenantId }, UserTaskQueryScopeKind.Available, candidate);
-        Assert.NotNull(availableToCandidate);
-        Assert.Single(availableToCandidate.Items);
+        var availableToCandidate = await Assert.That(await _fixture.Manager.QueryAsync(new() { TenantId = UserTaskTestFixture.TenantId }, UserTaskQueryScopeKind.Available, candidate)).IsNotNull();
+        await Assert.That(availableToCandidate.Items).HasSingleItem();
 
-        var availableToExcluded = await _fixture.Manager.QueryAsync(new() { TenantId = UserTaskTestFixture.TenantId }, UserTaskQueryScopeKind.Available, excluded);
-        Assert.NotNull(availableToExcluded);
-        Assert.Empty(availableToExcluded.Items);
+        var availableToExcluded = await Assert.That(await _fixture.Manager.QueryAsync(new() { TenantId = UserTaskTestFixture.TenantId }, UserTaskQueryScopeKind.Available, excluded)).IsNotNull();
+        await Assert.That(availableToExcluded.Items).IsEmpty();
 
         await _fixture.Manager.ClaimAsync(UserTaskTestFixture.TenantId, open.Id, new(1, "claim-1"), candidate);
 
-        var afterClaim = await _fixture.Manager.QueryAsync(new() { TenantId = UserTaskTestFixture.TenantId }, UserTaskQueryScopeKind.Available, candidate);
-        Assert.NotNull(afterClaim);
-        Assert.Empty(afterClaim.Items);
+        var afterClaim = await Assert.That(await _fixture.Manager.QueryAsync(new() { TenantId = UserTaskTestFixture.TenantId }, UserTaskQueryScopeKind.Available, candidate)).IsNotNull();
+        await Assert.That(afterClaim.Items).IsEmpty();
 
-        var assigned = await _fixture.Manager.QueryAsync(new() { TenantId = UserTaskTestFixture.TenantId }, UserTaskQueryScopeKind.Assigned, candidate);
-        Assert.NotNull(assigned);
-        Assert.Single(assigned.Items);
+        var assigned = await Assert.That(await _fixture.Manager.QueryAsync(new() { TenantId = UserTaskTestFixture.TenantId }, UserTaskQueryScopeKind.Assigned, candidate)).IsNotNull();
+        await Assert.That(assigned.Items).HasSingleItem();
     }
 
-    [Fact]
+    [Test]
     public async Task Summary_DoesNotDiscloseCandidateIdentitiesOrBlockingHealthToParticipants()
     {
         var candidate = _fixture.Actor("user-1");
@@ -264,13 +259,13 @@ public class UserTaskTests
 
         var summary = await UserTaskModelMapper.ToSummaryAsync(task, candidate, _fixture.Policy);
 
-        Assert.Equal("2 users", summary.CandidateSummary);
-        Assert.DoesNotContain(peer.Subject.Id, JsonSerializer.Serialize(summary));
-        Assert.Null(summary.HealthSeverity);
-        Assert.Null(summary.HealthCode);
+        await Assert.That(summary.CandidateSummary).IsEqualTo("2 users");
+        await Assert.That(JsonSerializer.Serialize(summary)).DoesNotContain(peer.Subject.Id);
+        await Assert.That(summary.HealthSeverity).IsNull();
+        await Assert.That(summary.HealthCode).IsNull();
     }
 
-    [Fact]
+    [Test]
     public async Task Summary_CarriesWorkflowContextForAuthorizedParticipants()
     {
         var actor = _fixture.Actor("user-1");
@@ -278,31 +273,29 @@ public class UserTaskTests
 
         var summary = await UserTaskModelMapper.ToSummaryAsync(task, actor, _fixture.Policy);
 
-        Assert.Equal("Approval workflow", summary.WorkflowDefinitionName);
-        Assert.Equal(3, summary.WorkflowDefinitionVersion);
-        Assert.Equal("correlation-1", summary.WorkflowInstanceReference);
+        await Assert.That(summary.WorkflowDefinitionName).IsEqualTo("Approval workflow");
+        await Assert.That(summary.WorkflowDefinitionVersion).IsEqualTo(3);
+        await Assert.That(summary.WorkflowInstanceReference).IsEqualTo("correlation-1");
     }
 
-    [Fact]
+    [Test]
     public async Task Events_AreWithheldFromParticipantsWithoutProtectedAccess()
     {
         var candidate = _fixture.Actor("user-1");
         var task = await _fixture.ProjectAsync(candidate.Subject);
 
-        var beforeClaim = await _fixture.Manager.GetEventsAsync(UserTaskTestFixture.TenantId, task.Id, null, 50, candidate);
-        Assert.NotNull(beforeClaim);
-        Assert.Empty(beforeClaim.Items);
+        var beforeClaim = await Assert.That(await _fixture.Manager.GetEventsAsync(UserTaskTestFixture.TenantId, task.Id, null, 50, candidate)).IsNotNull();
+        await Assert.That(beforeClaim.Items).IsEmpty();
 
         await _fixture.Manager.ClaimAsync(UserTaskTestFixture.TenantId, task.Id, new(1, "claim-1"), candidate);
 
-        var afterClaim = await _fixture.Manager.GetEventsAsync(UserTaskTestFixture.TenantId, task.Id, null, 50, candidate);
-        Assert.NotNull(afterClaim);
-        Assert.NotEmpty(afterClaim.Items);
+        var afterClaim = await Assert.That(await _fixture.Manager.GetEventsAsync(UserTaskTestFixture.TenantId, task.Id, null, 50, candidate)).IsNotNull();
+        await Assert.That(afterClaim.Items).IsNotEmpty();
         // Actor identifiers never reach the audit projection; only a display name may.
-        Assert.DoesNotContain(candidate.Subject.Id, JsonSerializer.Serialize(afterClaim));
+        await Assert.That(JsonSerializer.Serialize(afterClaim)).DoesNotContain(candidate.Subject.Id);
     }
 
-    [Fact]
+    [Test]
     public async Task Detail_WithholdsMaskedFieldValuesUntilAnExplicitRevealAndDoesNotConsumeTheRevision()
     {
         var form = new TestFormProvider(
@@ -321,34 +314,34 @@ public class UserTaskTests
 
         var detail = await fixture.Manager.GetAsync(UserTaskTestFixture.TenantId, task.Id, actor);
         var fields = detail!.Form!.Fields.ToDictionary(x => x.Key);
-        Assert.Equal("visible", fields["note"].Value?.GetString());
-        Assert.Null(fields["iban"].Value);
-        Assert.Null(fields["pin"].Value);
-        Assert.True(fields["iban"].CanReveal);
-        Assert.False(fields["pin"].CanReveal);
-        Assert.DoesNotContain("NL00BANK", JsonSerializer.Serialize(detail.Form));
+        await Assert.That(fields["note"].Value?.GetString()).IsEqualTo("visible");
+        await Assert.That(fields["iban"].Value).IsNull();
+        await Assert.That(fields["pin"].Value).IsNull();
+        await Assert.That(fields["iban"].CanReveal).IsTrue();
+        await Assert.That(fields["pin"].CanReveal).IsFalse();
+        await Assert.That(JsonSerializer.Serialize(detail.Form)).DoesNotContain("NL00BANK");
 
         var revisionBeforeReveal = detail.Revision;
         var revealed = await fixture.Manager.RevealFieldAsync(UserTaskTestFixture.TenantId, task.Id, "iban", actor);
-        Assert.Equal("NL00BANK", revealed?.GetString());
+        await Assert.That(revealed?.GetString()).IsEqualTo("NL00BANK");
 
         // A field the provider did not mark revealable is indistinguishable from an unknown one.
-        Assert.Null(await fixture.Manager.RevealFieldAsync(UserTaskTestFixture.TenantId, task.Id, "pin", actor));
-        Assert.Null(await fixture.Manager.RevealFieldAsync(UserTaskTestFixture.TenantId, task.Id, "nope", actor));
+        await Assert.That(await fixture.Manager.RevealFieldAsync(UserTaskTestFixture.TenantId, task.Id, "pin", actor)).IsNull();
+        await Assert.That(await fixture.Manager.RevealFieldAsync(UserTaskTestFixture.TenantId, task.Id, "nope", actor)).IsNull();
 
         var afterReveal = await fixture.Repository.GetAsync(UserTaskTestFixture.TenantId, task.Id);
         // The reveal is audited but must not consume the concurrency token, or the caller's next command
         // would conflict for no reason.
-        Assert.Equal(revisionBeforeReveal, afterReveal!.Revision);
-        Assert.Contains(afterReveal.Events, x => x.EventType == "FieldRevealed");
-        Assert.DoesNotContain("NL00BANK", JsonSerializer.Serialize(afterReveal.Events));
+        await Assert.That(afterReveal!.Revision).IsEqualTo(revisionBeforeReveal);
+        await Assert.That(afterReveal.Events).Contains(x => x.EventType == "FieldRevealed");
+        await Assert.That(JsonSerializer.Serialize(afterReveal.Events)).DoesNotContain("NL00BANK");
 
         var completion = await fixture.Manager.CompleteAsync(UserTaskTestFixture.TenantId, task.Id,
             new(revisionBeforeReveal, "complete-1", "Approve", payload), actor);
-        Assert.True(completion.Accepted);
+        await Assert.That(completion.Accepted).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task RevealField_IsRefusedForCallersWithoutProtectedAccess()
     {
         var form = new TestFormProvider(new UserTaskFormFieldDescriptor("iban", "IBAN", Masked: true, CanReveal: true));
@@ -361,13 +354,13 @@ public class UserTaskTests
         });
 
         // The candidate can see the task but has not claimed it, so protected access is not granted yet.
-        Assert.Null(await fixture.Manager.RevealFieldAsync(UserTaskTestFixture.TenantId, task.Id, "iban", candidate));
+        await Assert.That(await fixture.Manager.RevealFieldAsync(UserTaskTestFixture.TenantId, task.Id, "iban", candidate)).IsNull();
 
         await fixture.Manager.ClaimAsync(UserTaskTestFixture.TenantId, task.Id, new(1, "claim-1"), candidate);
-        Assert.NotNull(await fixture.Manager.RevealFieldAsync(UserTaskTestFixture.TenantId, task.Id, "iban", candidate));
+        await Assert.That(await fixture.Manager.RevealFieldAsync(UserTaskTestFixture.TenantId, task.Id, "iban", candidate)).IsNotNull();
     }
 
-    [Fact]
+    [Test]
     public async Task DueService_ReservesTimeoutAndResumesWorkflow()
     {
         var dueAt = _fixture.Clock.UtcNow.AddMinutes(-1);
@@ -375,13 +368,13 @@ public class UserTaskTests
             definition => definition with { DueAt = dueAt, EnableTimeoutOutcome = true });
         var due = new DefaultUserTaskDueService(_fixture.Repository, _fixture.Manager, _fixture.Sink, _fixture.Identity, _fixture.Clock);
 
-        Assert.Equal(1, await due.MarkOverdueAsync(UserTaskTestFixture.TenantId, _fixture.Clock.UtcNow));
+        await Assert.That(await due.MarkOverdueAsync(UserTaskTestFixture.TenantId, _fixture.Clock.UtcNow)).IsEqualTo(1);
         var timingOut = await _fixture.Repository.GetAsync(UserTaskTestFixture.TenantId, task.Id);
-        Assert.Equal(UserTaskStatus.TimingOut, timingOut!.Status);
-        Assert.Equal("Timeout", _fixture.Resumer.LastStimulus!.ActionKey);
+        await Assert.That(timingOut!.Status).IsEqualTo(UserTaskStatus.TimingOut);
+        await Assert.That(_fixture.Resumer.LastStimulus!.ActionKey).IsEqualTo("Timeout");
 
         await _fixture.Projection.FinalizeBookmarkRemovalAsync(new(UserTaskTestFixture.TenantId, task.Id, task.BookmarkId, _fixture.Clock.UtcNow));
         var timedOut = await _fixture.Repository.GetAsync(UserTaskTestFixture.TenantId, task.Id);
-        Assert.Equal(UserTaskStatus.TimedOut, timedOut!.Status);
+        await Assert.That(timedOut!.Status).IsEqualTo(UserTaskStatus.TimedOut);
     }
 }

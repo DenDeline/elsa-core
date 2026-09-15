@@ -14,7 +14,8 @@ namespace Elsa.Alterations.Core.UnitTests.Stores;
 /// </summary>
 public class MemoryAlterationJobStoreTenantIsolationTests
 {
-    [Fact(DisplayName = "FindManyAsync hides other tenants and keeps * visible")]
+    [Test]
+    [DisplayName("FindManyAsync hides other tenants and keeps * visible")]
     public async Task FindManyAsync_HidesOtherTenants()
     {
         var store = CreateStore("tenant-a");
@@ -22,13 +23,14 @@ public class MemoryAlterationJobStoreTenantIsolationTests
 
         var found = (await store.FindManyAsync(new AlterationJobFilter { PlanId = "plan-1" }, CancellationToken.None)).ToList();
 
-        Assert.Equal(2, found.Count);
-        Assert.Contains(found, x => x.Id == "job-a");
-        Assert.Contains(found, x => x.Id == "job-star");
-        Assert.DoesNotContain(found, x => x.Id == "job-b");
+        await Assert.That(found.Count).IsEqualTo(2);
+        await Assert.That(found).Contains(x => x.Id == "job-a");
+        await Assert.That(found).Contains(x => x.Id == "job-star");
+        await Assert.That(found).DoesNotContain(x => x.Id == "job-b");
     }
 
-    [Fact(DisplayName = "FindAsync does not return another tenant's row")]
+    [Test]
+    [DisplayName("FindAsync does not return another tenant's row")]
     public async Task FindAsync_WhenOtherTenant_ReturnsNull()
     {
         var store = CreateStore("tenant-a");
@@ -36,10 +38,11 @@ public class MemoryAlterationJobStoreTenantIsolationTests
 
         var found = await store.FindAsync(new AlterationJobFilter { Id = "job-b" });
 
-        Assert.Null(found);
+        await Assert.That(found).IsNull();
     }
 
-    [Fact(DisplayName = "FindManyIdsAsync hides other tenants")]
+    [Test]
+    [DisplayName("FindManyIdsAsync hides other tenants")]
     public async Task FindManyIdsAsync_HidesOtherTenants()
     {
         var store = CreateStore("tenant-a");
@@ -47,13 +50,14 @@ public class MemoryAlterationJobStoreTenantIsolationTests
 
         var found = (await store.FindManyIdsAsync(new AlterationJobFilter { PlanId = "plan-1" })).ToList();
 
-        Assert.Equal(2, found.Count);
-        Assert.Contains("job-a", found);
-        Assert.Contains("job-star", found);
-        Assert.DoesNotContain("job-b", found);
+        await Assert.That(found.Count).IsEqualTo(2);
+        await Assert.That(found).Contains("job-a");
+        await Assert.That(found).Contains("job-star");
+        await Assert.That(found).DoesNotContain("job-b");
     }
 
-    [Fact(DisplayName = "CountAsync hides other tenants and keeps * visible")]
+    [Test]
+    [DisplayName("CountAsync hides other tenants and keeps * visible")]
     public async Task CountAsync_HidesOtherTenants()
     {
         var store = CreateStore("tenant-a");
@@ -61,10 +65,11 @@ public class MemoryAlterationJobStoreTenantIsolationTests
 
         var count = await store.CountAsync(new AlterationJobFilter { PlanId = "plan-1" });
 
-        Assert.Equal(2, count);
+        await Assert.That(count).IsEqualTo(2);
     }
 
-    [Fact(DisplayName = "SaveAsync refuses to overwrite another tenant's row by Id")]
+    [Test]
+    [DisplayName("SaveAsync refuses to overwrite another tenant's row by Id")]
     public async Task SaveAsync_WhenOtherTenantOwnsId_ThrowsAndLeavesExisting()
     {
         var backing = new MemoryStore<AlterationJob>();
@@ -72,15 +77,16 @@ public class MemoryAlterationJobStoreTenantIsolationTests
         var tenantB = new MemoryAlterationJobStore(backing, new TestTenantAccessor("tenant-b"));
         await tenantA.SaveAsync(Job("shared", "tenant-a"));
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => tenantB.SaveAsync(Job("shared", "tenant-b")));
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => tenantB.SaveAsync(Job("shared", "tenant-b")));
         var remaining = await tenantA.FindAsync(new AlterationJobFilter { Id = "shared" });
 
-        Assert.Contains("shared", ex.Message);
-        Assert.NotNull(remaining);
-        Assert.Equal("tenant-a", remaining.TenantId);
+        await Assert.That(ex.Message).Contains("shared");
+        await Assert.That(remaining).IsNotNull();
+        await Assert.That(remaining.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveManyAsync refuses to overwrite another tenant's row by Id")]
+    [Test]
+    [DisplayName("SaveManyAsync refuses to overwrite another tenant's row by Id")]
     public async Task SaveManyAsync_WhenOtherTenantOwnsId_ThrowsAndLeavesExisting()
     {
         var backing = new MemoryStore<AlterationJob>();
@@ -88,14 +94,15 @@ public class MemoryAlterationJobStoreTenantIsolationTests
         var tenantB = new MemoryAlterationJobStore(backing, new TestTenantAccessor("tenant-b"));
         await tenantA.SaveAsync(Job("shared", "tenant-a"));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => tenantB.SaveManyAsync([Job("shared", "tenant-b")]));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => tenantB.SaveManyAsync([Job("shared", "tenant-b")]));
         var remaining = await tenantA.FindAsync(new AlterationJobFilter { Id = "shared" });
 
-        Assert.NotNull(remaining);
-        Assert.Equal("tenant-a", remaining.TenantId);
+        await Assert.That(remaining).IsNotNull();
+        await Assert.That(remaining.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveAsync refuses a forged owner TenantId from another ambient tenant")]
+    [Test]
+    [DisplayName("SaveAsync refuses a forged owner TenantId from another ambient tenant")]
     public async Task SaveAsync_WhenAmbientForgesOwnerTenantId_ThrowsAndLeavesExisting()
     {
         var backing = new MemoryStore<AlterationJob>();
@@ -103,15 +110,16 @@ public class MemoryAlterationJobStoreTenantIsolationTests
         var tenantB = new MemoryAlterationJobStore(backing, new TestTenantAccessor("tenant-b"));
         await tenantA.SaveAsync(Job("shared", "tenant-a"));
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => tenantB.SaveAsync(Job("shared", "tenant-a")));
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => tenantB.SaveAsync(Job("shared", "tenant-a")));
         var remaining = await tenantA.FindAsync(new AlterationJobFilter { Id = "shared" });
 
-        Assert.Contains("shared", ex.Message);
-        Assert.NotNull(remaining);
-        Assert.Equal("tenant-a", remaining.TenantId);
+        await Assert.That(ex.Message).Contains("shared");
+        await Assert.That(remaining).IsNotNull();
+        await Assert.That(remaining.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveManyAsync refuses a forged owner TenantId from another ambient tenant")]
+    [Test]
+    [DisplayName("SaveManyAsync refuses a forged owner TenantId from another ambient tenant")]
     public async Task SaveManyAsync_WhenAmbientForgesOwnerTenantId_ThrowsAndLeavesExisting()
     {
         var backing = new MemoryStore<AlterationJob>();
@@ -119,14 +127,15 @@ public class MemoryAlterationJobStoreTenantIsolationTests
         var tenantB = new MemoryAlterationJobStore(backing, new TestTenantAccessor("tenant-b"));
         await tenantA.SaveAsync(Job("shared", "tenant-a"));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => tenantB.SaveManyAsync([Job("shared", "tenant-a")]));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => tenantB.SaveManyAsync([Job("shared", "tenant-a")]));
         var remaining = await tenantA.FindAsync(new AlterationJobFilter { Id = "shared" });
 
-        Assert.NotNull(remaining);
-        Assert.Equal("tenant-a", remaining.TenantId);
+        await Assert.That(remaining).IsNotNull();
+        await Assert.That(remaining.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveAsync refuses to overwrite a tenant-agnostic row by Id")]
+    [Test]
+    [DisplayName("SaveAsync refuses to overwrite a tenant-agnostic row by Id")]
     public async Task SaveAsync_WhenAgnosticRowExists_NamedTenantThrowsAndLeavesExisting()
     {
         var backing = new MemoryStore<AlterationJob>();
@@ -134,30 +143,32 @@ public class MemoryAlterationJobStoreTenantIsolationTests
         var tenantB = new MemoryAlterationJobStore(backing, new TestTenantAccessor("tenant-b"));
         await agnostic.SaveAsync(Job("shared", Tenant.AgnosticTenantId));
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => tenantB.SaveAsync(Job("shared", "tenant-b")));
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => tenantB.SaveAsync(Job("shared", "tenant-b")));
         var remaining = await agnostic.FindAsync(new AlterationJobFilter { Id = "shared" });
 
-        Assert.Contains("shared", ex.Message);
-        Assert.NotNull(remaining);
-        Assert.Equal(Tenant.AgnosticTenantId, remaining.TenantId);
+        await Assert.That(ex.Message).Contains("shared");
+        await Assert.That(remaining).IsNotNull();
+        await Assert.That(remaining.TenantId).IsEqualTo(Tenant.AgnosticTenantId);
     }
 
-    [Fact(DisplayName = "SaveAsync refuses a named source when an agnostic writer updates a * row")]
+    [Test]
+    [DisplayName("SaveAsync refuses a named source when an agnostic writer updates a * row")]
     public async Task SaveAsync_WhenAgnosticAmbientReceivesNamedSource_ThrowsAndLeavesExisting()
     {
         var backing = new MemoryStore<AlterationJob>();
         var agnostic = new MemoryAlterationJobStore(backing, new TestTenantAccessor(Tenant.AgnosticTenantId));
         await agnostic.SaveAsync(Job("shared", Tenant.AgnosticTenantId));
 
-        var ex = await Assert.ThrowsAsync<InvalidOperationException>(() => agnostic.SaveAsync(Job("shared", "tenant-b")));
+        var ex = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => agnostic.SaveAsync(Job("shared", "tenant-b")));
         var remaining = await agnostic.FindAsync(new AlterationJobFilter { Id = "shared" });
 
-        Assert.Contains("shared", ex.Message);
-        Assert.NotNull(remaining);
-        Assert.Equal(Tenant.AgnosticTenantId, remaining.TenantId);
+        await Assert.That(ex.Message).Contains("shared");
+        await Assert.That(remaining).IsNotNull();
+        await Assert.That(remaining.TenantId).IsEqualTo(Tenant.AgnosticTenantId);
     }
 
-    [Fact(DisplayName = "SaveManyAsync refuses to overwrite a tenant-agnostic row by Id")]
+    [Test]
+    [DisplayName("SaveManyAsync refuses to overwrite a tenant-agnostic row by Id")]
     public async Task SaveManyAsync_WhenAgnosticRowExists_NamedTenantThrowsAndLeavesExisting()
     {
         var backing = new MemoryStore<AlterationJob>();
@@ -165,28 +176,30 @@ public class MemoryAlterationJobStoreTenantIsolationTests
         var tenantB = new MemoryAlterationJobStore(backing, new TestTenantAccessor("tenant-b"));
         await agnostic.SaveAsync(Job("shared", Tenant.AgnosticTenantId));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => tenantB.SaveManyAsync([Job("shared", "tenant-b")]));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => tenantB.SaveManyAsync([Job("shared", "tenant-b")]));
         var remaining = await agnostic.FindAsync(new AlterationJobFilter { Id = "shared" });
 
-        Assert.NotNull(remaining);
-        Assert.Equal(Tenant.AgnosticTenantId, remaining.TenantId);
+        await Assert.That(remaining).IsNotNull();
+        await Assert.That(remaining.TenantId).IsEqualTo(Tenant.AgnosticTenantId);
     }
 
-    [Fact(DisplayName = "SaveManyAsync refuses a named source when an agnostic writer updates a * row")]
+    [Test]
+    [DisplayName("SaveManyAsync refuses a named source when an agnostic writer updates a * row")]
     public async Task SaveManyAsync_WhenAgnosticAmbientReceivesNamedSource_ThrowsAndLeavesExisting()
     {
         var backing = new MemoryStore<AlterationJob>();
         var agnostic = new MemoryAlterationJobStore(backing, new TestTenantAccessor(Tenant.AgnosticTenantId));
         await agnostic.SaveAsync(Job("shared", Tenant.AgnosticTenantId));
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => agnostic.SaveManyAsync([Job("shared", "tenant-b")]));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => agnostic.SaveManyAsync([Job("shared", "tenant-b")]));
         var remaining = await agnostic.FindAsync(new AlterationJobFilter { Id = "shared" });
 
-        Assert.NotNull(remaining);
-        Assert.Equal(Tenant.AgnosticTenantId, remaining.TenantId);
+        await Assert.That(remaining).IsNotNull();
+        await Assert.That(remaining.TenantId).IsEqualTo(Tenant.AgnosticTenantId);
     }
 
-    [Fact(DisplayName = "SaveAsync still lets an agnostic writer update a * row")]
+    [Test]
+    [DisplayName("SaveAsync still lets an agnostic writer update a * row")]
     public async Task SaveAsync_WhenAmbientIsAgnostic_UpsertsAgnosticRow()
     {
         var store = CreateStore(Tenant.AgnosticTenantId);
@@ -197,12 +210,13 @@ public class MemoryAlterationJobStoreTenantIsolationTests
         await store.SaveAsync(updated);
 
         var found = await store.FindAsync(new AlterationJobFilter { Id = "shared" });
-        Assert.NotNull(found);
-        Assert.Equal(AlterationJobStatus.Completed, found.Status);
-        Assert.Equal(Tenant.AgnosticTenantId, found.TenantId);
+        await Assert.That(found).IsNotNull();
+        await Assert.That(found.Status).IsEqualTo(AlterationJobStatus.Completed);
+        await Assert.That(found.TenantId).IsEqualTo(Tenant.AgnosticTenantId);
     }
 
-    [Fact(DisplayName = "SaveAsync still upserts a visible same-tenant row")]
+    [Test]
+    [DisplayName("SaveAsync still upserts a visible same-tenant row")]
     public async Task SaveAsync_WhenSameTenantOwnsId_Upserts()
     {
         var store = CreateStore("tenant-a");
@@ -213,12 +227,13 @@ public class MemoryAlterationJobStoreTenantIsolationTests
         await store.SaveAsync(updated);
 
         var found = await store.FindAsync(new AlterationJobFilter { Id = "job-a" });
-        Assert.NotNull(found);
-        Assert.Equal(AlterationJobStatus.Completed, found.Status);
-        Assert.Equal("tenant-a", found.TenantId);
+        await Assert.That(found).IsNotNull();
+        await Assert.That(found.Status).IsEqualTo(AlterationJobStatus.Completed);
+        await Assert.That(found.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveAsync preserves the stored TenantId on an accepted update")]
+    [Test]
+    [DisplayName("SaveAsync preserves the stored TenantId on an accepted update")]
     public async Task SaveAsync_WhenIncomingTenantDiffers_PreservesExistingTenantId()
     {
         var store = CreateStore("tenant-a");
@@ -229,12 +244,13 @@ public class MemoryAlterationJobStoreTenantIsolationTests
         await store.SaveAsync(updated);
 
         var found = await store.FindAsync(new AlterationJobFilter { Id = "job-a" });
-        Assert.NotNull(found);
-        Assert.Equal(AlterationJobStatus.Completed, found.Status);
-        Assert.Equal("tenant-a", found.TenantId);
+        await Assert.That(found).IsNotNull();
+        await Assert.That(found.Status).IsEqualTo(AlterationJobStatus.Completed);
+        await Assert.That(found.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveManyAsync preserves the stored TenantId for repeated accepted updates")]
+    [Test]
+    [DisplayName("SaveManyAsync preserves the stored TenantId for repeated accepted updates")]
     public async Task SaveManyAsync_WhenRepeatedIdIncomingTenantsDiffer_PreservesExistingTenantId()
     {
         var store = CreateStore("tenant-a");
@@ -246,12 +262,13 @@ public class MemoryAlterationJobStoreTenantIsolationTests
         await store.SaveManyAsync([first, second]);
 
         var found = await store.FindAsync(new AlterationJobFilter { Id = "job-a" });
-        Assert.NotNull(found);
-        Assert.Equal(AlterationJobStatus.Completed, found.Status);
-        Assert.Equal("tenant-a", found.TenantId);
+        await Assert.That(found).IsNotNull();
+        await Assert.That(found.Status).IsEqualTo(AlterationJobStatus.Completed);
+        await Assert.That(found.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveManyAsync preserves the owner for repeated updates of a new Id")]
+    [Test]
+    [DisplayName("SaveManyAsync preserves the owner for repeated updates of a new Id")]
     public async Task SaveManyAsync_WhenRepeatedNewIdUsesSameOwner_SucceedsAndPreservesTenantId()
     {
         var store = CreateStore("tenant-a");
@@ -262,36 +279,39 @@ public class MemoryAlterationJobStoreTenantIsolationTests
         await store.SaveManyAsync([first, second]);
 
         var found = await store.FindAsync(new AlterationJobFilter { Id = "job-new" });
-        Assert.NotNull(found);
-        Assert.Equal(AlterationJobStatus.Completed, found.Status);
-        Assert.Equal("tenant-a", found.TenantId);
+        await Assert.That(found).IsNotNull();
+        await Assert.That(found.Status).IsEqualTo(AlterationJobStatus.Completed);
+        await Assert.That(found.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveManyAsync rejects a repeated new Id that changes * to a named source")]
+    [Test]
+    [DisplayName("SaveManyAsync rejects a repeated new Id that changes * to a named source")]
     public async Task SaveManyAsync_WhenRepeatedNewIdChangesAgnosticToNamed_ThrowsAndPersistsNothing()
     {
         var store = CreateStore(Tenant.AgnosticTenantId);
         var first = Job("job-new", Tenant.AgnosticTenantId);
         var second = Job("job-new", "tenant-b");
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => store.SaveManyAsync([first, second]));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => store.SaveManyAsync([first, second]));
 
-        Assert.Null(await store.FindAsync(new AlterationJobFilter { Id = "job-new" }));
+        await Assert.That(await store.FindAsync(new AlterationJobFilter { Id = "job-new" })).IsNull();
     }
 
-    [Fact(DisplayName = "SaveManyAsync rejects a repeated new Id that changes its named owner")]
+    [Test]
+    [DisplayName("SaveManyAsync rejects a repeated new Id that changes its named owner")]
     public async Task SaveManyAsync_WhenRepeatedNewIdChangesNamedOwner_ThrowsAndPersistsNothing()
     {
         var store = CreateStore("tenant-a");
         var first = Job("job-new", "tenant-b");
         var second = Job("job-new", "tenant-c");
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => store.SaveManyAsync([first, second]));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => store.SaveManyAsync([first, second]));
 
-        Assert.Null(await store.FindAsync(new AlterationJobFilter { Id = "job-new" }));
+        await Assert.That(await store.FindAsync(new AlterationJobFilter { Id = "job-new" })).IsNull();
     }
 
-    [Fact(DisplayName = "SaveAsync stamps the ambient tenant when TenantId is unset")]
+    [Test]
+    [DisplayName("SaveAsync stamps the ambient tenant when TenantId is unset")]
     public async Task SaveAsync_WhenTenantIdUnset_StampsAmbientTenant()
     {
         var store = CreateStore("tenant-a");
@@ -299,11 +319,12 @@ public class MemoryAlterationJobStoreTenantIsolationTests
 
         await store.SaveAsync(job);
 
-        Assert.Equal("tenant-a", job.TenantId);
-        Assert.Equal("tenant-a", (await store.FindAsync(new AlterationJobFilter { Id = "job-new" }))!.TenantId);
+        await Assert.That(job.TenantId).IsEqualTo("tenant-a");
+        await Assert.That((await store.FindAsync(new AlterationJobFilter { Id = "job-new" }))!.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveManyAsync stamps the ambient tenant when TenantId is unset")]
+    [Test]
+    [DisplayName("SaveManyAsync stamps the ambient tenant when TenantId is unset")]
     public async Task SaveManyAsync_WhenTenantIdUnset_StampsAmbientTenant()
     {
         var store = CreateStore("tenant-a");
@@ -315,13 +336,21 @@ public class MemoryAlterationJobStoreTenantIsolationTests
 
         await store.SaveManyAsync(jobs);
 
-        Assert.All(jobs, job => Assert.Equal("tenant-a", job.TenantId));
+        foreach (var job in jobs)
+        {
+            await Assert.That(job.TenantId).IsEqualTo("tenant-a");
+        }
+
         var found = (await store.FindManyAsync(new AlterationJobFilter { PlanId = "plan-1" }, CancellationToken.None)).ToList();
-        Assert.Equal(2, found.Count);
-        Assert.All(found, job => Assert.Equal("tenant-a", job.TenantId));
+        await Assert.That(found.Count).IsEqualTo(2);
+        foreach (var job in found)
+        {
+            await Assert.That(job.TenantId).IsEqualTo("tenant-a");
+        }
     }
 
-    [Fact(DisplayName = "SaveAsync does not overwrite * or an explicit TenantId")]
+    [Test]
+    [DisplayName("SaveAsync does not overwrite * or an explicit TenantId")]
     public async Task SaveAsync_DoesNotOverwriteAgnosticOrExplicitTenantId()
     {
         var store = CreateStore("tenant-a");
@@ -331,11 +360,12 @@ public class MemoryAlterationJobStoreTenantIsolationTests
         await store.SaveAsync(agnostic);
         await store.SaveAsync(explicitTenant);
 
-        Assert.Equal(Tenant.AgnosticTenantId, agnostic.TenantId);
-        Assert.Equal("tenant-a", explicitTenant.TenantId);
+        await Assert.That(agnostic.TenantId).IsEqualTo(Tenant.AgnosticTenantId);
+        await Assert.That(explicitTenant.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "FindManyAsync on the default tenant includes null TenantId rows")]
+    [Test]
+    [DisplayName("FindManyAsync on the default tenant includes null TenantId rows")]
     public async Task FindManyAsync_WhenAmbientIsDefault_IncludesNullTenantId()
     {
         var backing = new MemoryStore<AlterationJob>();
@@ -345,11 +375,12 @@ public class MemoryAlterationJobStoreTenantIsolationTests
 
         var found = (await store.FindManyAsync(new AlterationJobFilter { PlanId = "plan-1" }, CancellationToken.None)).ToList();
 
-        Assert.Single(found);
-        Assert.Equal("job-null", found[0].Id);
+        await Assert.That(found).HasSingleItem();
+        await Assert.That(found[0].Id).IsEqualTo("job-null");
     }
 
-    [Fact(DisplayName = "FindManyAsync on a named tenant hides null TenantId rows")]
+    [Test]
+    [DisplayName("FindManyAsync on a named tenant hides null TenantId rows")]
     public async Task FindManyAsync_WhenAmbientIsNamed_HidesNullTenantId()
     {
         var backing = new MemoryStore<AlterationJob>();
@@ -359,8 +390,8 @@ public class MemoryAlterationJobStoreTenantIsolationTests
 
         var found = (await store.FindManyAsync(new AlterationJobFilter { PlanId = "plan-1" }, CancellationToken.None)).ToList();
 
-        Assert.Single(found);
-        Assert.Equal("job-a", found[0].Id);
+        await Assert.That(found).HasSingleItem();
+        await Assert.That(found[0].Id).IsEqualTo("job-a");
     }
 
     private static MemoryAlterationJobStore CreateStore(string tenantId) =>

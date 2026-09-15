@@ -1,3 +1,4 @@
+using System.IO;
 using Elsa.Common.Multitenancy;
 using Elsa.Secrets.Contracts;
 using Elsa.Secrets.Extensions;
@@ -8,6 +9,7 @@ using Elsa.Tenants.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
+using System.Threading.Tasks;
 
 namespace Elsa.Secrets.UnitTests;
 
@@ -17,39 +19,39 @@ namespace Elsa.Secrets.UnitTests;
 /// </summary>
 public class SecretRepositoryTenantIsolationTests
 {
-    [Fact]
-    public void Repositories_RetainPreTenancyConstructorShapes()
+    [Test]
+    public async Task Repositories_RetainPreTenancyConstructorShapes()
     {
         var options = Microsoft.Extensions.Options.Options.Create(new SecretsOptions());
         _ = new FileSecretRepository(options, null);
         _ = new FileSecretRepository(options, tenantAccessor: new DefaultTenantAccessor());
 
-        var binaryConstructor = typeof(FileSecretRepository).GetConstructor([
+        var binaryConstructor = await Assert.That(typeof(FileSecretRepository).GetConstructor([
             typeof(IOptions<SecretsOptions>),
-            typeof(ILogger<FileSecretRepository>)])!;
-        Assert.False(binaryConstructor.GetParameters()[1].IsOptional);
+            typeof(ILogger<FileSecretRepository>)])).IsNotNull();
+        await Assert.That(binaryConstructor.GetParameters()[1].IsOptional).IsFalse();
 
-        var compatibilityConstructor = typeof(FileSecretRepository).GetConstructor([
+        var compatibilityConstructor = await Assert.That(typeof(FileSecretRepository).GetConstructor([
             typeof(IOptions<SecretsOptions>),
             typeof(ILogger<FileSecretRepository>),
-            typeof(ITenantAccessor)])!;
-        Assert.True(compatibilityConstructor.GetParameters()[1].IsOptional);
-        Assert.True(compatibilityConstructor.GetParameters()[2].IsOptional);
-        Assert.NotNull(typeof(FileSecretRepository).GetConstructor([
+            typeof(ITenantAccessor)])).IsNotNull();
+        await Assert.That(compatibilityConstructor.GetParameters()[1].IsOptional).IsTrue();
+        await Assert.That(compatibilityConstructor.GetParameters()[2].IsOptional).IsTrue();
+        await Assert.That(typeof(FileSecretRepository).GetConstructor([
             typeof(IOptions<SecretsOptions>),
             typeof(IOptions<TenantsOptions>),
             typeof(ISecretNameValidator),
             typeof(ILogger<FileSecretRepository>),
-            typeof(ITenantAccessor)]));
-        Assert.NotNull(typeof(InMemorySecretRepository).GetConstructor(Type.EmptyTypes));
-        Assert.NotNull(typeof(InMemorySecretRepository).GetConstructor([typeof(ITenantAccessor)]));
-        Assert.NotNull(typeof(InMemorySecretRepository).GetConstructor([
+            typeof(ITenantAccessor)])).IsNotNull();
+        await Assert.That(typeof(InMemorySecretRepository).GetConstructor(Type.EmptyTypes)).IsNotNull();
+        await Assert.That(typeof(InMemorySecretRepository).GetConstructor([typeof(ITenantAccessor)])).IsNotNull();
+        await Assert.That(typeof(InMemorySecretRepository).GetConstructor([
             typeof(IOptions<TenantsOptions>),
             typeof(ISecretNameValidator),
-            typeof(ITenantAccessor)]));
+            typeof(ITenantAccessor)])).IsNotNull();
     }
 
-    [Fact]
+    [Test]
     public async Task Repositories_StampAndIsolateSecretsByTenant()
     {
         await ForEachRepositoryAsync(async (tenantAccessor, repository) =>
@@ -59,17 +61,17 @@ public class SecretRepositoryTenantIsolationTests
                 var secretA = new Secret { Name = "SMTP:PASSWORD", DisplayName = "Tenant A" };
                 await repository.AddAsync(secretA);
 
-                Assert.Equal("tenant-a", secretA.TenantId);
+                await Assert.That(secretA.TenantId).IsEqualTo("tenant-a");
                 var loadedA = await repository.GetAsync("smtp:password");
-                Assert.Equal("Tenant A", loadedA!.DisplayName);
-                Assert.Equal("tenant-a", loadedA.TenantId);
-                Assert.Single(await repository.ListAsync());
+                await Assert.That(loadedA!.DisplayName).IsEqualTo("Tenant A");
+                await Assert.That(loadedA.TenantId).IsEqualTo("tenant-a");
+                await Assert.That(await repository.ListAsync()).HasSingleItem();
 
-                await Assert.ThrowsAsync<InvalidOperationException>(() => repository.AddAsync(new Secret
+                await Assert.That(() => repository.AddAsync(new Secret
                 {
                     Name = "smtp:password",
                     DisplayName = "Duplicate"
-                }));
+                })).ThrowsExactly<InvalidOperationException>();
             }
 
             using (UseTenant(tenantAccessor, "tenant-b"))
@@ -77,20 +79,20 @@ public class SecretRepositoryTenantIsolationTests
                 var secretB = new Secret { Name = "smtp:password", DisplayName = "Tenant B" };
                 await repository.AddAsync(secretB);
 
-                Assert.Equal("tenant-b", secretB.TenantId);
-                Assert.Equal("Tenant B", (await repository.GetAsync("SMTP:PASSWORD"))!.DisplayName);
-                Assert.Single(await repository.ListAsync());
+                await Assert.That(secretB.TenantId).IsEqualTo("tenant-b");
+                await Assert.That((await repository.GetAsync("SMTP:PASSWORD"))!.DisplayName).IsEqualTo("Tenant B");
+                await Assert.That(await repository.ListAsync()).HasSingleItem();
             }
 
             using (UseTenant(tenantAccessor, "tenant-a"))
             {
-                Assert.Equal("Tenant A", (await repository.GetAsync("smtp:password"))!.DisplayName);
-                Assert.Single(await repository.ListAsync());
+                await Assert.That((await repository.GetAsync("smtp:password"))!.DisplayName).IsEqualTo("Tenant A");
+                await Assert.That(await repository.ListAsync()).HasSingleItem();
             }
         });
     }
 
-    [Fact]
+    [Test]
     public async Task Repositories_SaveDoesNotOverwriteAnotherTenantsSecret()
     {
         await ForEachRepositoryAsync(async (tenantAccessor, repository) =>
@@ -102,14 +104,14 @@ public class SecretRepositoryTenantIsolationTests
                 await repository.SaveAsync(new Secret { Name = "SMTP:PASSWORD", DisplayName = "Tenant B" });
 
             using (UseTenant(tenantAccessor, "tenant-a"))
-                Assert.Equal("Tenant A", (await repository.GetAsync("smtp:password"))!.DisplayName);
+                await Assert.That((await repository.GetAsync("smtp:password"))!.DisplayName).IsEqualTo("Tenant A");
 
             using (UseTenant(tenantAccessor, "tenant-b"))
-                Assert.Equal("Tenant B", (await repository.GetAsync("smtp:password"))!.DisplayName);
+                await Assert.That((await repository.GetAsync("smtp:password"))!.DisplayName).IsEqualTo("Tenant B");
         });
     }
 
-    [Fact]
+    [Test]
     public async Task Repositories_RejectExplicitHiddenTenantDuplicatesWithoutMutation()
     {
         await ForEachRepositoryAsync(async (tenantAccessor, repository) =>
@@ -119,32 +121,32 @@ public class SecretRepositoryTenantIsolationTests
 
             using (UseTenant(tenantAccessor, "tenant-a"))
             {
-                await Assert.ThrowsAsync<InvalidOperationException>(() => repository.AddAsync(new Secret
+                await Assert.That(() => repository.AddAsync(new Secret
                 {
                     Name = "SMTP:PASSWORD",
                     DisplayName = "Duplicate",
                     TenantId = "tenant-b"
-                }));
-                await Assert.ThrowsAsync<InvalidOperationException>(() => repository.SaveAsync(new Secret
+                })).ThrowsExactly<InvalidOperationException>();
+                await Assert.That(() => repository.SaveAsync(new Secret
                 {
                     Name = "smtp:password",
                     DisplayName = "Duplicate",
                     TenantId = "tenant-b"
-                }));
-                Assert.False(await repository.TryAddOrReplaceDeletedAsync(new Secret
+                })).ThrowsExactly<InvalidOperationException>();
+                await Assert.That(await repository.TryAddOrReplaceDeletedAsync(new Secret
                 {
                     Name = "smtp:password",
                     DisplayName = "Duplicate",
                     TenantId = "tenant-b"
-                }));
+                })).IsFalse();
             }
 
             using (UseTenant(tenantAccessor, "tenant-b"))
-                Assert.Equal("Tenant B", (await repository.GetAsync("smtp:password"))!.DisplayName);
+                await Assert.That((await repository.GetAsync("smtp:password"))!.DisplayName).IsEqualTo("Tenant B");
         });
     }
 
-    [Fact]
+    [Test]
     public async Task Repositories_SaveRetainsTheOwnedTenant()
     {
         await ForEachRepositoryAsync(async (tenantAccessor, repository) =>
@@ -162,16 +164,16 @@ public class SecretRepositoryTenantIsolationTests
                 });
 
                 var updated = await repository.GetAsync("smtp:password");
-                Assert.Equal("Updated A", updated!.DisplayName);
-                Assert.Equal("tenant-a", updated.TenantId);
+                await Assert.That(updated!.DisplayName).IsEqualTo("Updated A");
+                await Assert.That(updated.TenantId).IsEqualTo("tenant-a");
             }
 
             using (UseTenant(tenantAccessor, "tenant-b"))
-                Assert.Null(await repository.GetAsync("smtp:password"));
+                await Assert.That(await repository.GetAsync("smtp:password")).IsNull();
         });
     }
 
-    [Fact]
+    [Test]
     public async Task Repositories_TryAddOrReplaceDeletedIsTenantScoped()
     {
         await ForEachRepositoryAsync(async (tenantAccessor, repository) =>
@@ -185,28 +187,28 @@ public class SecretRepositoryTenantIsolationTests
                     Status = SecretStatus.Deleted
                 });
 
-                Assert.True(await repository.TryAddOrReplaceDeletedAsync(new Secret
+                await Assert.That(await repository.TryAddOrReplaceDeletedAsync(new Secret
                 {
                     Name = "SMTP:PASSWORD",
                     DisplayName = "Replacement A"
-                }));
-                Assert.Equal("Replacement A", (await repository.GetAsync("smtp:password"))!.DisplayName);
+                })).IsTrue();
+                await Assert.That((await repository.GetAsync("smtp:password"))!.DisplayName).IsEqualTo("Replacement A");
             }
 
             using (UseTenant(tenantAccessor, "tenant-b"))
             {
                 // Tenant B has no visibility into A's deleted row and can create its own row instead.
-                Assert.True(await repository.TryAddOrReplaceDeletedAsync(new Secret
+                await Assert.That(await repository.TryAddOrReplaceDeletedAsync(new Secret
                 {
                     Name = "smtp:password",
                     DisplayName = "Tenant B"
-                }));
-                Assert.Equal("Tenant B", (await repository.GetAsync("smtp:password"))!.DisplayName);
+                })).IsTrue();
+                await Assert.That((await repository.GetAsync("smtp:password"))!.DisplayName).IsEqualTo("Tenant B");
             }
         });
     }
 
-    [Fact]
+    [Test]
     public async Task Repositories_AgnosticSecretsAreVisibleButNotReplaceableByNamedTenants()
     {
         await ForEachRepositoryAsync(async (tenantAccessor, repository) =>
@@ -223,31 +225,31 @@ public class SecretRepositoryTenantIsolationTests
 
             using (UseTenant(tenantAccessor, "tenant-a"))
             {
-                Assert.Equal("Shared", (await repository.GetAsync("SHARED:SECRET"))!.DisplayName);
-                await Assert.ThrowsAsync<InvalidOperationException>(() => repository.SaveAsync(new Secret
+                await Assert.That((await repository.GetAsync("SHARED:SECRET"))!.DisplayName).IsEqualTo("Shared");
+                await Assert.That(() => repository.SaveAsync(new Secret
                 {
                     Name = "shared:secret",
                     DisplayName = "Rehomed"
-                }));
-                Assert.False(await repository.TryAddOrReplaceDeletedAsync(new Secret
+                })).ThrowsExactly<InvalidOperationException>();
+                await Assert.That(await repository.TryAddOrReplaceDeletedAsync(new Secret
                 {
                     Name = "shared:secret",
                     DisplayName = "Rehomed"
-                }));
+                })).IsFalse();
             }
 
             using (UseTenant(tenantAccessor, "tenant-b"))
-                Assert.Equal("Shared", (await repository.GetAsync("shared:secret"))!.DisplayName);
+                await Assert.That((await repository.GetAsync("shared:secret"))!.DisplayName).IsEqualTo("Shared");
         });
     }
 
-    [Fact]
+    [Test]
     public async Task Repositories_PreserveNullRowsForLegacyNoAccessorUse()
     {
         var inMemory = new InMemorySecretRepository();
         await inMemory.AddAsync(new Secret { Name = "legacy:secret", DisplayName = "Legacy" });
         var loadedInMemory = await inMemory.GetAsync("legacy:secret");
-        Assert.Null(loadedInMemory!.TenantId);
+        await Assert.That(loadedInMemory!.TenantId).IsNull();
 
         var path = Path.Join(Path.GetTempPath(), $"elsa-secrets-{Guid.NewGuid():N}.json");
         try
@@ -257,7 +259,7 @@ public class SecretRepositoryTenantIsolationTests
             var reloaded = new FileSecretRepository(Microsoft.Extensions.Options.Options.Create(new SecretsOptions { RepositoryFilePath = path }));
 
             var loadedFile = await reloaded.GetAsync("legacy:secret");
-            Assert.Null(loadedFile!.TenantId);
+            await Assert.That(loadedFile!.TenantId).IsNull();
         }
         finally
         {
@@ -266,7 +268,7 @@ public class SecretRepositoryTenantIsolationTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task Repositories_TreatNullAndEmptyTenantIdsAsTheSameDefaultTenantForUniqueness()
     {
         var inMemoryAccessor = new MutableTenantAccessor(null);
@@ -286,7 +288,7 @@ public class SecretRepositoryTenantIsolationTests
         }
     }
 
-    [Fact]
+    [Test]
     public async Task Repositories_NormalizeNamesForLookupAndUniqueness()
     {
         await ForEachRepositoryAsync(async (tenantAccessor, repository) =>
@@ -294,34 +296,34 @@ public class SecretRepositoryTenantIsolationTests
             using (UseTenant(tenantAccessor, "tenant-a"))
             {
                 await repository.AddAsync(new Secret { Name = " smtp:password ", DisplayName = "Original" });
-                Assert.Equal("Original", (await repository.GetAsync(" SMTP:PASSWORD "))!.DisplayName);
+                await Assert.That((await repository.GetAsync(" SMTP:PASSWORD "))!.DisplayName).IsEqualTo("Original");
 
-                await Assert.ThrowsAsync<InvalidOperationException>(() => repository.AddAsync(new Secret
+                await Assert.That(() => repository.AddAsync(new Secret
                 {
                     Name = "SMTP:PASSWORD",
                     DisplayName = "Duplicate"
-                }));
+                })).ThrowsExactly<InvalidOperationException>();
 
                 await repository.SaveAsync(new Secret { Name = " SMTP:PASSWORD ", DisplayName = "Updated" });
-                Assert.Equal("Updated", (await repository.GetAsync("smtp:password"))!.DisplayName);
-                Assert.False(await repository.TryAddOrReplaceDeletedAsync(new Secret
+                await Assert.That((await repository.GetAsync("smtp:password"))!.DisplayName).IsEqualTo("Updated");
+                await Assert.That(await repository.TryAddOrReplaceDeletedAsync(new Secret
                 {
                     Name = " smtp:password ",
                     DisplayName = "Active duplicate"
-                }));
+                })).IsFalse();
             }
 
             using (UseTenant(tenantAccessor, "tenant-b"))
             {
                 await repository.AddAsync(new Secret { Name = "SMTP:PASSWORD", DisplayName = "Tenant B" });
-                Assert.Equal("Tenant B", (await repository.GetAsync(" smtp:password "))!.DisplayName);
+                await Assert.That((await repository.GetAsync(" smtp:password "))!.DisplayName).IsEqualTo("Tenant B");
             }
         });
     }
 
-    [Theory]
-    [InlineData(false)]
-    [InlineData(true)]
+    [Test]
+    [Arguments(false)]
+    [Arguments(true)]
     public async Task Repositories_CreatedThroughDiFollowTenancyOption(bool tenancyEnabled)
     {
         await ForEachDiRepositoryAsync(tenancyEnabled, async (tenantAccessor, repository) =>
@@ -333,17 +335,17 @@ public class SecretRepositoryTenantIsolationTests
             {
                 if (tenancyEnabled)
                 {
-                    Assert.Null(await repository.GetAsync("smtp:password"));
+                    await Assert.That(await repository.GetAsync("smtp:password")).IsNull();
                     await repository.AddAsync(new Secret { Name = "SMTP:PASSWORD", DisplayName = "Tenant B" });
                 }
                 else
                 {
-                    Assert.Equal("Tenant A", (await repository.GetAsync("smtp:password"))!.DisplayName);
-                    await Assert.ThrowsAsync<InvalidOperationException>(() => repository.AddAsync(new Secret
+                    await Assert.That((await repository.GetAsync("smtp:password"))!.DisplayName).IsEqualTo("Tenant A");
+                    await Assert.That(() => repository.AddAsync(new Secret
                     {
                         Name = "SMTP:PASSWORD",
                         DisplayName = "Duplicate"
-                    }));
+                    })).ThrowsExactly<InvalidOperationException>();
 
                     await repository.AddAsync(new Secret
                     {
@@ -352,20 +354,20 @@ public class SecretRepositoryTenantIsolationTests
                         TenantId = "tenant-a"
                     });
 
-                    Assert.Equal("Explicit Tenant A", (await repository.GetAsync("EXPLICIT:SECRET"))!.DisplayName);
-                    Assert.Contains(await repository.ListAsync(), x => x.Name == "explicit:secret");
-                    await Assert.ThrowsAsync<InvalidOperationException>(() => repository.AddAsync(new Secret
+                    await Assert.That((await repository.GetAsync("EXPLICIT:SECRET"))!.DisplayName).IsEqualTo("Explicit Tenant A");
+                    await Assert.That(await repository.ListAsync()).Contains(x => x.Name == "explicit:secret");
+                    await Assert.That(() => repository.AddAsync(new Secret
                     {
                         Name = " explicit:secret ",
                         DisplayName = "Duplicate Explicit",
                         TenantId = "tenant-b"
-                    }));
+                    })).ThrowsExactly<InvalidOperationException>();
                 }
             }
         });
     }
 
-    [Fact]
+    [Test]
     public async Task Repositories_WhenTenancyIsDisabledPreserveIncomingTenantOnReplacement()
     {
         await ForEachDiRepositoryAsync(false, async (_, repository) =>
@@ -386,10 +388,9 @@ public class SecretRepositoryTenantIsolationTests
                 TenantId = "tenant-b"
             });
 
-            var saved = await repository.GetAsync("save:secret");
-            Assert.NotNull(saved);
-            Assert.Equal("save-existing", saved!.Id);
-            Assert.Equal("tenant-b", saved.TenantId);
+            var saved = await Assert.That(await repository.GetAsync("save:secret")).IsNotNull();
+            await Assert.That(saved.Id).IsEqualTo("save-existing");
+            await Assert.That(saved.TenantId).IsEqualTo("tenant-b");
 
             await repository.AddAsync(new Secret
             {
@@ -408,15 +409,14 @@ public class SecretRepositoryTenantIsolationTests
                 TenantId = "tenant-b"
             });
 
-            Assert.True(replaced);
-            var replacement = await repository.GetAsync("replace:secret");
-            Assert.NotNull(replacement);
-            Assert.Equal("replace-incoming", replacement!.Id);
-            Assert.Equal("tenant-b", replacement.TenantId);
+            await Assert.That(replaced).IsTrue();
+            var replacement = await Assert.That(await repository.GetAsync("replace:secret")).IsNotNull();
+            await Assert.That(replacement.Id).IsEqualTo("replace-incoming");
+            await Assert.That(replacement.TenantId).IsEqualTo("tenant-b");
         });
     }
 
-    [Fact]
+    [Test]
     public async Task FileRepository_DefaultTenantKeepsReadingLegacyNullTenantRows()
     {
         var path = Path.Join(Path.GetTempPath(), $"elsa-secrets-{Guid.NewGuid():N}.json");
@@ -429,12 +429,12 @@ public class SecretRepositoryTenantIsolationTests
             var namedAccessor = new DefaultTenantAccessor();
             var namedRepository = new FileSecretRepository(options, null, namedAccessor);
             using (UseTenant(namedAccessor, "tenant-a"))
-                Assert.Empty(await namedRepository.ListAsync());
+                await Assert.That(await namedRepository.ListAsync()).IsEmpty();
 
             var defaultAccessor = new DefaultTenantAccessor();
             var defaultRepository = new FileSecretRepository(options, null, defaultAccessor);
-            Assert.Equal("Legacy", (await defaultRepository.GetAsync("legacy:secret"))!.DisplayName);
-            Assert.Null((await defaultRepository.GetAsync("legacy:secret"))!.TenantId);
+            await Assert.That((await defaultRepository.GetAsync("legacy:secret"))!.DisplayName).IsEqualTo("Legacy");
+            await Assert.That((await defaultRepository.GetAsync("legacy:secret"))!.TenantId).IsNull();
         }
         finally
         {
@@ -458,9 +458,9 @@ public class SecretRepositoryTenantIsolationTests
             TenantId = Tenant.DefaultTenantId
         };
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => repository.AddAsync(explicitDefault));
-        await Assert.ThrowsAsync<InvalidOperationException>(() => repository.SaveAsync(explicitDefault));
-        Assert.False(await repository.TryAddOrReplaceDeletedAsync(explicitDefault));
+        await Assert.That(() => repository.AddAsync(explicitDefault)).ThrowsExactly<InvalidOperationException>();
+        await Assert.That(() => repository.SaveAsync(explicitDefault)).ThrowsExactly<InvalidOperationException>();
+        await Assert.That(await repository.TryAddOrReplaceDeletedAsync(explicitDefault)).IsFalse();
     }
 
     private static async Task ForEachRepositoryAsync(Func<ITenantAccessor, ISecretRepository, Task> test)

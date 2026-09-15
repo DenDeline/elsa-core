@@ -12,7 +12,8 @@ namespace Elsa.Labels.UnitTests.Services;
 /// </summary>
 public class InMemoryWorkflowDefinitionLabelStoreTenantIsolationTests
 {
-    [Fact(DisplayName = "FindByWorkflowDefinitionVersionIdAsync hides other tenants and keeps * visible")]
+    [Test]
+    [DisplayName("FindByWorkflowDefinitionVersionIdAsync hides other tenants and keeps * visible")]
     public async Task FindByWorkflowDefinitionVersionIdAsync_HidesOtherTenants()
     {
         var store = CreateStore("tenant-a");
@@ -20,13 +21,14 @@ public class InMemoryWorkflowDefinitionLabelStoreTenantIsolationTests
 
         var found = (await store.FindByWorkflowDefinitionVersionIdAsync("order:1")).ToList();
 
-        Assert.Equal(2, found.Count);
-        Assert.Contains(found, x => x.Id == "assoc-a");
-        Assert.Contains(found, x => x.Id == "assoc-star");
-        Assert.DoesNotContain(found, x => x.Id == "assoc-b");
+        await Assert.That(found.Count).IsEqualTo(2);
+        await Assert.That(found).Contains(x => x.Id == "assoc-a");
+        await Assert.That(found).Contains(x => x.Id == "assoc-star");
+        await Assert.That(found).DoesNotContain(x => x.Id == "assoc-b");
     }
 
-    [Fact(DisplayName = "FindByLabelIdsAsync hides other tenants")]
+    [Test]
+    [DisplayName("FindByLabelIdsAsync hides other tenants")]
     public async Task FindByLabelIdsAsync_HidesOtherTenants()
     {
         var store = CreateStore("tenant-a");
@@ -34,13 +36,14 @@ public class InMemoryWorkflowDefinitionLabelStoreTenantIsolationTests
 
         var found = (await store.FindByLabelIdsAsync(["red"])).ToList();
 
-        Assert.Equal(2, found.Count);
-        Assert.Contains(found, x => x.Id == "assoc-a");
-        Assert.Contains(found, x => x.Id == "assoc-star");
-        Assert.DoesNotContain(found, x => x.Id == "assoc-b");
+        await Assert.That(found.Count).IsEqualTo(2);
+        await Assert.That(found).Contains(x => x.Id == "assoc-a");
+        await Assert.That(found).Contains(x => x.Id == "assoc-star");
+        await Assert.That(found).DoesNotContain(x => x.Id == "assoc-b");
     }
 
-    [Fact(DisplayName = "DeleteAsync does not remove another tenant's row")]
+    [Test]
+    [DisplayName("DeleteAsync does not remove another tenant's row")]
     public async Task DeleteAsync_DoesNotDeleteOtherTenantRows()
     {
         var backing = new MemoryStore<WorkflowDefinitionLabel>();
@@ -51,13 +54,14 @@ public class InMemoryWorkflowDefinitionLabelStoreTenantIsolationTests
         var deleted = await tenantA.DeleteAsync("assoc-b");
         var remainingForB = (await tenantB.FindByLabelIdsAsync(["red"])).ToList();
 
-        Assert.False(deleted);
-        Assert.Contains(remainingForB, x => x.Id == "assoc-b");
-        Assert.Contains(remainingForB, x => x.Id == "assoc-star");
-        Assert.DoesNotContain(remainingForB, x => x.Id == "assoc-a");
+        await Assert.That(deleted).IsFalse();
+        await Assert.That(remainingForB).Contains(x => x.Id == "assoc-b");
+        await Assert.That(remainingForB).Contains(x => x.Id == "assoc-star");
+        await Assert.That(remainingForB).DoesNotContain(x => x.Id == "assoc-a");
     }
 
-    [Fact(DisplayName = "DeleteAsync leaves a same-ID row after another tenant replaces it")]
+    [Test]
+    [DisplayName("DeleteAsync leaves a same-ID row after another tenant replaces it")]
     public async Task DeleteAsync_WhenSameIdWasReplacedByOtherTenant_LeavesReplacement()
     {
         var backing = new MemoryStore<WorkflowDefinitionLabel>();
@@ -69,13 +73,14 @@ public class InMemoryWorkflowDefinitionLabelStoreTenantIsolationTests
         var deleted = await tenantA.DeleteAsync("shared");
         var remaining = (await tenantB.FindByLabelIdsAsync(["red"])).ToList();
 
-        Assert.False(deleted);
-        Assert.Single(remaining);
-        Assert.Equal("shared", remaining[0].Id);
-        Assert.Equal("tenant-b", remaining[0].TenantId);
+        await Assert.That(deleted).IsFalse();
+        await Assert.That(remaining).HasSingleItem();
+        await Assert.That(remaining[0].Id).IsEqualTo("shared");
+        await Assert.That(remaining[0].TenantId).IsEqualTo("tenant-b");
     }
 
-    [Fact(DisplayName = "DeleteByWorkflowDefinitionIdAsync leaves the other tenant's associations")]
+    [Test]
+    [DisplayName("DeleteByWorkflowDefinitionIdAsync leaves the other tenant's associations")]
     public async Task DeleteByWorkflowDefinitionIdAsync_WhenDefinitionIdIsShared_LeavesOtherTenantRows()
     {
         var backing = new MemoryStore<WorkflowDefinitionLabel>();
@@ -88,13 +93,14 @@ public class InMemoryWorkflowDefinitionLabelStoreTenantIsolationTests
         var remainingForA = (await tenantA.FindByWorkflowDefinitionVersionIdAsync("order:1")).ToList();
         var remainingForB = (await tenantB.FindByWorkflowDefinitionVersionIdAsync("order:1")).ToList();
 
-        Assert.Equal(1, deleted);
-        Assert.Empty(remainingForA);
-        Assert.Single(remainingForB);
-        Assert.Equal("assoc-b", remainingForB[0].Id);
+        await Assert.That(deleted).IsEqualTo(1);
+        await Assert.That(remainingForA).IsEmpty();
+        await Assert.That(remainingForB).HasSingleItem();
+        await Assert.That(remainingForB[0].Id).IsEqualTo("assoc-b");
     }
 
-    [Fact(DisplayName = "ReplaceAsync does not delete another tenant's rows")]
+    [Test]
+    [DisplayName("ReplaceAsync does not delete another tenant's rows")]
     public async Task ReplaceAsync_DoesNotDeleteOtherTenantRows()
     {
         var backing = new MemoryStore<WorkflowDefinitionLabel>();
@@ -109,15 +115,16 @@ public class InMemoryWorkflowDefinitionLabelStoreTenantIsolationTests
         var remainingForA = (await tenantA.FindByWorkflowDefinitionVersionIdAsync("order:1")).ToList();
         var remainingForB = (await tenantB.FindByLabelIdsAsync(["red"])).ToList();
 
-        Assert.Contains(remainingForA, x => x.Id == "assoc-a2");
-        Assert.Contains(remainingForA, x => x.Id == "assoc-star");
-        Assert.DoesNotContain(remainingForA, x => x.Id == "assoc-a");
-        Assert.Contains(remainingForB, x => x.Id == "assoc-b");
-        Assert.Contains(remainingForB, x => x.Id == "assoc-star");
-        Assert.DoesNotContain(remainingForB, x => x.Id == "assoc-a");
+        await Assert.That(remainingForA).Contains(x => x.Id == "assoc-a2");
+        await Assert.That(remainingForA).Contains(x => x.Id == "assoc-star");
+        await Assert.That(remainingForA).DoesNotContain(x => x.Id == "assoc-a");
+        await Assert.That(remainingForB).Contains(x => x.Id == "assoc-b");
+        await Assert.That(remainingForB).Contains(x => x.Id == "assoc-star");
+        await Assert.That(remainingForB).DoesNotContain(x => x.Id == "assoc-a");
     }
 
-    [Fact(DisplayName = "SaveAsync stamps the ambient tenant when TenantId is unset")]
+    [Test]
+    [DisplayName("SaveAsync stamps the ambient tenant when TenantId is unset")]
     public async Task SaveAsync_WhenTenantIdUnset_StampsAmbientTenant()
     {
         var store = CreateStore("tenant-a");
@@ -125,12 +132,13 @@ public class InMemoryWorkflowDefinitionLabelStoreTenantIsolationTests
 
         await store.SaveAsync(association);
 
-        Assert.Equal("tenant-a", association.TenantId);
+        await Assert.That(association.TenantId).IsEqualTo("tenant-a");
         var found = (await store.FindByLabelIdsAsync(["red"])).Single();
-        Assert.Equal("tenant-a", found.TenantId);
+        await Assert.That(found.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "FindByLabelIdsAsync on the default tenant includes null TenantId rows")]
+    [Test]
+    [DisplayName("FindByLabelIdsAsync on the default tenant includes null TenantId rows")]
     public async Task FindByLabelIdsAsync_WhenAmbientIsDefault_IncludesNullTenantId()
     {
         var backing = new MemoryStore<WorkflowDefinitionLabel>();
@@ -140,8 +148,8 @@ public class InMemoryWorkflowDefinitionLabelStoreTenantIsolationTests
 
         var found = (await store.FindByLabelIdsAsync(["red"])).ToList();
 
-        Assert.Single(found);
-        Assert.Equal("assoc-null", found[0].Id);
+        await Assert.That(found).HasSingleItem();
+        await Assert.That(found[0].Id).IsEqualTo("assoc-null");
     }
 
     private static InMemoryWorkflowDefinitionLabelStore CreateStore(string tenantId) =>

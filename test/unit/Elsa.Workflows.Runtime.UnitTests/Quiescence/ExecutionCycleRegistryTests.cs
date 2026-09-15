@@ -1,6 +1,7 @@
 using Elsa.Common;
 using Elsa.Workflows.Runtime.Services;
 using NSubstitute;
+using System.Threading.Tasks;
 
 namespace Elsa.Workflows.Runtime.UnitTests.Quiescence;
 
@@ -17,27 +18,29 @@ public class ExecutionCycleRegistryTests
         _sources.Snapshot().Returns(Array.Empty<IngressSourceSnapshot>());
     }
 
-    [Fact(DisplayName = "Active count increases and decreases with begin/dispose")]
-    public void ActiveCountFollowsExecutionCycleLifecycle()
+    [Test]
+    [DisplayName("Active count increases and decreases with begin/dispose")]
+    public async Task ActiveCountFollowsExecutionCycleLifecycle()
     {
         var sut = new ExecutionCycleRegistry(_sources, _clock);
 
-        Assert.Equal(0, sut.ActiveCount);
+        await Assert.That(sut.ActiveCount).IsEqualTo(0);
 
         var a = sut.BeginCycle("instance-1", ingressSourceName: null, CancellationToken.None);
-        Assert.Equal(1, sut.ActiveCount);
+        await Assert.That(sut.ActiveCount).IsEqualTo(1);
 
         var b = sut.BeginCycle("instance-2", ingressSourceName: null, CancellationToken.None);
-        Assert.Equal(2, sut.ActiveCount);
+        await Assert.That(sut.ActiveCount).IsEqualTo(2);
 
         a.Dispose();
-        Assert.Equal(1, sut.ActiveCount);
+        await Assert.That(sut.ActiveCount).IsEqualTo(1);
 
         b.Dispose();
-        Assert.Equal(0, sut.ActiveCount);
+        await Assert.That(sut.ActiveCount).IsEqualTo(0);
     }
 
-    [Fact(DisplayName = "Begin with null ingress name does NOT flip any source")]
+    [Test]
+    [DisplayName("Begin with null ingress name does NOT flip any source")]
     public void NullIngressNameDoesNotFlip()
     {
         var sut = new ExecutionCycleRegistry(_sources, _clock);
@@ -47,7 +50,8 @@ public class ExecutionCycleRegistryTests
         _sources.DidNotReceive().MarkPauseFailedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Exception?>());
     }
 
-    [Fact(DisplayName = "Begin from a Paused source flips it to PauseFailed (FR-018)")]
+    [Test]
+    [DisplayName("Begin from a Paused source flips it to PauseFailed (FR-018)")]
     public void PausedSourceDeliveringIsFlipped()
     {
         var now = _clock.UtcNow;
@@ -60,7 +64,8 @@ public class ExecutionCycleRegistryTests
         _sources.Received(1).MarkPauseFailedAsync("http.trigger", "delivered-while-paused", Arg.Any<Exception?>());
     }
 
-    [Fact(DisplayName = "Begin from a Running source does NOT flip")]
+    [Test]
+    [DisplayName("Begin from a Running source does NOT flip")]
     public void RunningSourceIsNotFlipped()
     {
         var now = _clock.UtcNow;
@@ -73,8 +78,9 @@ public class ExecutionCycleRegistryTests
         _sources.DidNotReceive().MarkPauseFailedAsync(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<Exception?>());
     }
 
-    [Fact(DisplayName = "ListActiveCycles returns a snapshot of live handles")]
-    public void ListActiveCyclesReturnsSnapshot()
+    [Test]
+    [DisplayName("ListActiveCycles returns a snapshot of live handles")]
+    public async Task ListActiveCyclesReturnsSnapshot()
     {
         var sut = new ExecutionCycleRegistry(_sources, _clock);
         var a = sut.BeginCycle("instance-1", null, CancellationToken.None);
@@ -82,43 +88,46 @@ public class ExecutionCycleRegistryTests
 
         var snapshot = sut.ListActiveCycles();
 
-        Assert.Equal(2, snapshot.Count);
-        Assert.Contains(a, snapshot);
-        Assert.Contains(b, snapshot);
+        await Assert.That(snapshot.Count).IsEqualTo(2);
+        await Assert.That(snapshot).Contains(a);
+        await Assert.That(snapshot).Contains(b);
 
         a.Dispose();
         b.Dispose();
     }
 
-    [Fact(DisplayName = "ExecutionCycleHandle.Cancel triggers the cancellation token")]
-    public void ExecutionCycleHandleCancelFiresToken()
+    [Test]
+    [DisplayName("ExecutionCycleHandle.Cancel triggers the cancellation token")]
+    public async Task ExecutionCycleHandleCancelFiresToken()
     {
         var sut = new ExecutionCycleRegistry(_sources, _clock);
         using var handle = sut.BeginCycle("instance-1", null, CancellationToken.None);
 
-        Assert.False(handle.CancellationToken.IsCancellationRequested);
+        await Assert.That(handle.CancellationToken.IsCancellationRequested).IsFalse();
         handle.Cancel();
-        Assert.True(handle.CancellationToken.IsCancellationRequested);
+        await Assert.That(handle.CancellationToken.IsCancellationRequested).IsTrue();
     }
 
-    [Fact(DisplayName = "ExecutionCycleHandle.TryCancel reports whether this call transitioned the handle")]
-    public void ExecutionCycleHandleTryCancelReportsTransition()
+    [Test]
+    [DisplayName("ExecutionCycleHandle.TryCancel reports whether this call transitioned the handle")]
+    public async Task ExecutionCycleHandleTryCancelReportsTransition()
     {
         var sut = new ExecutionCycleRegistry(_sources, _clock);
         var handle = sut.BeginCycle("instance-1", null, CancellationToken.None);
 
-        Assert.True(handle.TryCancel());
-        Assert.False(handle.TryCancel());
+        await Assert.That(handle.TryCancel()).IsTrue();
+        await Assert.That(handle.TryCancel()).IsFalse();
 
         handle.Dispose();
-        Assert.False(handle.TryCancel());
+        await Assert.That(handle.TryCancel()).IsFalse();
 
         var disposed = sut.BeginCycle("instance-2", null, CancellationToken.None);
         disposed.Dispose();
-        Assert.False(disposed.TryCancel());
+        await Assert.That(disposed.TryCancel()).IsFalse();
     }
 
-    [Fact(DisplayName = "ExecutionCycleHandle.TryCancel reports false when disposed during the cancellation callback")]
+    [Test]
+    [DisplayName("ExecutionCycleHandle.TryCancel reports false when disposed during the cancellation callback")]
     public async Task TryCancelReportsFalseWhenDisposedDuringCancellationCallback()
     {
         var sut = new ExecutionCycleRegistry(_sources, _clock);
@@ -140,10 +149,11 @@ public class ExecutionCycleRegistryTests
         handle.Dispose();
         releaseCallback.SetResult();
 
-        Assert.False(await cancelTask.WaitAsync(TimeSpan.FromSeconds(5)));
+        await Assert.That(await cancelTask.WaitAsync(TimeSpan.FromSeconds(5))).IsFalse();
     }
 
-    [Fact(DisplayName = "ExecutionCycleHandle.Dispose completes while a CTS callback waits for it")]
+    [Test]
+    [DisplayName("ExecutionCycleHandle.Dispose completes while a CTS callback waits for it")]
     public async Task DisposeCompletesWhileCtsCallbackWaitsForIt()
     {
         var cancellationCallbackEntered = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -171,13 +181,14 @@ public class ExecutionCycleRegistryTests
             disposalCompleted.TrySetResult();
         });
 
-        Assert.True(await callbackObservedDisposal.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await Assert.That(await callbackObservedDisposal.Task.WaitAsync(TimeSpan.FromSeconds(5))).IsTrue();
         await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.False(await cancelTask.WaitAsync(TimeSpan.FromSeconds(5)));
-        Assert.True(handle.Disposed.IsCompletedSuccessfully);
+        await Assert.That(await cancelTask.WaitAsync(TimeSpan.FromSeconds(5))).IsFalse();
+        await Assert.That(handle.Disposed.IsCompletedSuccessfully).IsTrue();
     }
 
-    [Fact(DisplayName = "ExecutionCycleHandle defers CTS disposal while linked-token cancellation is in progress")]
+    [Test]
+    [DisplayName("ExecutionCycleHandle defers CTS disposal while linked-token cancellation is in progress")]
     public async Task DisposeCompletesWhileLinkedTokenCancellationWaitsForIt()
     {
         using var linkedCts = new CancellationTokenSource();
@@ -206,15 +217,16 @@ public class ExecutionCycleRegistryTests
             disposalCompleted.TrySetResult();
         });
 
-        Assert.True(await callbackObservedDisposal.Task.WaitAsync(TimeSpan.FromSeconds(5)));
+        await Assert.That(await callbackObservedDisposal.Task.WaitAsync(TimeSpan.FromSeconds(5))).IsTrue();
         await disposeTask.WaitAsync(TimeSpan.FromSeconds(5));
         await cancelTask.WaitAsync(TimeSpan.FromSeconds(5));
-        Assert.True(handle.Disposed.IsCompletedSuccessfully);
-        Assert.True(cycleToken.IsCancellationRequested);
+        await Assert.That(handle.Disposed.IsCompletedSuccessfully).IsTrue();
+        await Assert.That(cycleToken.IsCancellationRequested).IsTrue();
     }
 
-    [Fact(DisplayName = "ExecutionCycleHandle defers CTS disposal from a cancellation callback")]
-    public void DisposeDefersCtsDisposalUntilCancellationPropagationExits()
+    [Test]
+    [DisplayName("ExecutionCycleHandle defers CTS disposal from a cancellation callback")]
+    public async Task DisposeDefersCtsDisposalUntilCancellationPropagationExits()
     {
         var disposedDuringCancellation = false;
         var handle = new ExecutionCycleHandle(
@@ -230,13 +242,14 @@ public class ExecutionCycleRegistryTests
             disposedDuringCancellation = handle.Disposed.IsCompleted;
         });
 
-        Assert.False(handle.TryCancel());
-        Assert.False(disposedDuringCancellation);
-        Assert.True(handle.Disposed.IsCompletedSuccessfully);
+        await Assert.That(handle.TryCancel()).IsFalse();
+        await Assert.That(disposedDuringCancellation).IsFalse();
+        await Assert.That(handle.Disposed.IsCompletedSuccessfully).IsTrue();
     }
 
-    [Fact(DisplayName = "ExecutionCycleHandle.Cancel invokes the cancel callback supplied at registration")]
-    public void CancelCallbackIsInvoked()
+    [Test]
+    [DisplayName("ExecutionCycleHandle.Cancel invokes the cancel callback supplied at registration")]
+    public async Task CancelCallbackIsInvoked()
     {
         var sut = new ExecutionCycleRegistry(_sources, _clock);
         var callbackInvocations = 0;
@@ -247,21 +260,22 @@ public class ExecutionCycleRegistryTests
             cancelCallback: () => Interlocked.Increment(ref callbackInvocations));
 
         handle.Cancel();
-        Assert.Equal(1, callbackInvocations);
+        await Assert.That(callbackInvocations).IsEqualTo(1);
 
         // Truly idempotent: a second Cancel() before Dispose() must NOT re-invoke the callback. The handle uses an
         // Interlocked lifecycle state so callers can't accidentally trigger non-idempotent cancellation side effects.
         handle.Cancel();
-        Assert.Equal(1, callbackInvocations);
+        await Assert.That(callbackInvocations).IsEqualTo(1);
 
         // Once disposed, further Cancel() invocations remain silent no-ops.
         handle.Dispose();
         handle.Cancel();
-        Assert.Equal(1, callbackInvocations);
+        await Assert.That(callbackInvocations).IsEqualTo(1);
     }
 
-    [Fact(DisplayName = "ExecutionCycleHandle.Cancel swallows callback exceptions so drain is not interrupted")]
-    public void CancelCallbackExceptionsAreSwallowed()
+    [Test]
+    [DisplayName("ExecutionCycleHandle.Cancel swallows callback exceptions so drain is not interrupted")]
+    public async Task CancelCallbackExceptionsAreSwallowed()
     {
         var sut = new ExecutionCycleRegistry(_sources, _clock);
         using var handle = sut.BeginCycle(
@@ -272,11 +286,12 @@ public class ExecutionCycleRegistryTests
 
         // Should not throw — Cancel() must remain best-effort so a single misbehaving workflow does not crash drain.
         handle.Cancel();
-        Assert.True(handle.CancellationToken.IsCancellationRequested);
+        await Assert.That(handle.CancellationToken.IsCancellationRequested).IsTrue();
     }
 
-    [Fact(DisplayName = "ExecutionCycleHandle.TryCancel swallows non-fatal CTS callback exceptions")]
-    public void TryCancelSwallowsNonFatalCtsCallbackExceptions()
+    [Test]
+    [DisplayName("ExecutionCycleHandle.TryCancel swallows non-fatal CTS callback exceptions")]
+    public async Task TryCancelSwallowsNonFatalCtsCallbackExceptions()
     {
         var handle = new ExecutionCycleHandle(
             Guid.NewGuid(),
@@ -286,15 +301,16 @@ public class ExecutionCycleRegistryTests
             linkedToken: CancellationToken.None);
         using var registration = handle.CancellationToken.Register(() => throw new InvalidOperationException("callback refused to cancel"));
 
-        Assert.True(handle.TryCancel());
-        Assert.False(handle.TryCancel());
+        await Assert.That(handle.TryCancel()).IsTrue();
+        await Assert.That(handle.TryCancel()).IsFalse();
 
         handle.Dispose();
-        Assert.True(handle.Disposed.IsCompletedSuccessfully);
+        await Assert.That(handle.Disposed.IsCompletedSuccessfully).IsTrue();
     }
 
-    [Fact(DisplayName = "ExecutionCycleHandle.TryCancel propagates fatal CTS callback exceptions wrapped in an aggregate")]
-    public void TryCancelPropagatesFatalCtsCallbackExceptions()
+    [Test]
+    [DisplayName("ExecutionCycleHandle.TryCancel propagates fatal CTS callback exceptions wrapped in an aggregate")]
+    public async Task TryCancelPropagatesFatalCtsCallbackExceptions()
     {
         var handle = new ExecutionCycleHandle(
             Guid.NewGuid(),
@@ -304,22 +320,23 @@ public class ExecutionCycleRegistryTests
             linkedToken: CancellationToken.None);
         using var registration = handle.CancellationToken.Register(() => throw new OutOfMemoryException("fatal callback failure"));
 
-        var exception = Assert.Throws<AggregateException>(() => handle.TryCancel());
+        var exception = await Assert.That(() => handle.TryCancel()).ThrowsExactly<AggregateException>();
 
-        Assert.Contains(exception.Flatten().InnerExceptions, inner => inner is OutOfMemoryException);
+        await Assert.That(exception.Flatten().InnerExceptions).Contains(inner => inner is OutOfMemoryException);
         handle.Dispose();
-        Assert.True(handle.Disposed.IsCompletedSuccessfully);
+        await Assert.That(handle.Disposed.IsCompletedSuccessfully).IsTrue();
     }
 
-    [Fact(DisplayName = "ExecutionCycleHandle.Disposed completes when the handle is disposed")]
+    [Test]
+    [DisplayName("ExecutionCycleHandle.Disposed completes when the handle is disposed")]
     public async Task DisposedTaskCompletesOnDispose()
     {
         var sut = new ExecutionCycleRegistry(_sources, _clock);
         var handle = sut.BeginCycle("instance-1", null, CancellationToken.None);
 
-        Assert.False(handle.Disposed.IsCompleted);
+        await Assert.That(handle.Disposed.IsCompleted).IsFalse();
         handle.Dispose();
         await handle.Disposed.WaitAsync(TimeSpan.FromSeconds(1));
-        Assert.True(handle.Disposed.IsCompletedSuccessfully);
+        await Assert.That(handle.Disposed.IsCompletedSuccessfully).IsTrue();
     }
 }

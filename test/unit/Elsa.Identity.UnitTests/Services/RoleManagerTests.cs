@@ -20,13 +20,13 @@ public class RoleManagerTests
         _manager = new RoleManager(_roleStore, new StoreBasedRoleProvider(_roleStore), _tenantAccessor);
     }
 
-    [Fact]
+    [Test]
     public async Task CreateListUpdateAndDeleteAreIsolatedForRolesWithTheSameNameAcrossTenants()
     {
         var roleA = await _manager.CreateRoleAsync("Operators", ["tenant-a:permission"], "operators-a");
 
-        Assert.Equal("tenant-a", roleA.Role.TenantId);
-        Assert.Single(await _roleStore.FindManyAsync(new() { TenantId = "tenant-a" }));
+        await Assert.That(roleA.Role.TenantId).IsEqualTo("tenant-a");
+        await Assert.That(await _roleStore.FindManyAsync(new() { TenantId = "tenant-a" })).HasSingleItem();
 
         var roleBId = string.Empty;
         using (_tenantAccessor.PushContext(new Tenant { Id = "tenant-b", Name = "Tenant B" }))
@@ -34,41 +34,41 @@ public class RoleManagerTests
             var roleB = await _manager.CreateRoleAsync("Operators", ["tenant-b:permission"], "operators-b");
             roleBId = roleB.Role.Id;
 
-            Assert.NotEqual(roleA.Role.Id, roleB.Role.Id);
-            Assert.Equal("tenant-b", roleB.Role.TenantId);
-            Assert.Equal(["tenant-b:permission"], roleB.Role.Permissions);
+            await Assert.That(roleB.Role.Id).IsNotEqualTo(roleA.Role.Id);
+            await Assert.That(roleB.Role.TenantId).IsEqualTo("tenant-b");
+            await Assert.That(roleB.Role.Permissions).IsEquivalentTo(["tenant-b:permission"], TUnit.Assertions.Enums.CollectionOrdering.Matching);
 
             var tenantBRoles = await _roleStore.FindManyAsync(new() { TenantId = "tenant-b" });
-            Assert.Single(tenantBRoles);
-            Assert.Equal(roleB.Role.Id, tenantBRoles.Single().Id);
+            await Assert.That(tenantBRoles).HasSingleItem();
+            await Assert.That(tenantBRoles.Single().Id).IsEqualTo(roleB.Role.Id);
 
             tenantBRoles.Single().Name = "Operators B";
             await _roleStore.SaveAsync(tenantBRoles.Single());
 
-            Assert.Equal("Operators B", (await _roleStore.FindAsync(new() { Id = roleB.Role.Id }))!.Name);
+            await Assert.That((await _roleStore.FindAsync(new() { Id = roleB.Role.Id }))!.Name).IsEqualTo("Operators B");
         }
 
         var tenantARole = await _roleStore.FindAsync(new() { Id = roleA.Role.Id });
-        Assert.NotNull(tenantARole);
-        Assert.Equal("Operators", tenantARole.Name);
-        Assert.Equal(["tenant-a:permission"], tenantARole.Permissions);
+        await Assert.That(tenantARole).IsNotNull();
+        await Assert.That(tenantARole.Name).IsEqualTo("Operators");
+        await Assert.That(tenantARole.Permissions).IsEquivalentTo(["tenant-a:permission"], TUnit.Assertions.Enums.CollectionOrdering.Matching);
 
         tenantARole.Name = "Operators A";
         await _roleStore.SaveAsync(tenantARole);
-        Assert.Equal("Operators A", (await _roleStore.FindAsync(new() { Id = roleA.Role.Id }))!.Name);
+        await Assert.That((await _roleStore.FindAsync(new() { Id = roleA.Role.Id }))!.Name).IsEqualTo("Operators A");
 
         await _roleStore.DeleteAsync(new() { Id = roleA.Role.Id });
-        Assert.Empty(await _roleStore.FindManyAsync(new() { TenantId = "tenant-a" }));
+        await Assert.That(await _roleStore.FindManyAsync(new() { TenantId = "tenant-a" })).IsEmpty();
 
         using (_tenantAccessor.PushContext(new Tenant { Id = "tenant-b", Name = "Tenant B" }))
         {
             var remainingTenantBRole = await _roleStore.FindAsync(new() { Id = roleBId });
-            Assert.NotNull(remainingTenantBRole);
-            Assert.Equal("Operators B", remainingTenantBRole.Name);
+            await Assert.That(remainingTenantBRole).IsNotNull();
+            await Assert.That(remainingTenantBRole.Name).IsEqualTo("Operators B");
         }
     }
 
-    [Fact]
+    [Test]
     public async Task DefaultTenantListsLegacyRolesWithoutATenantId()
     {
         var tenantAccessor = new TestTenantAccessor();
@@ -78,11 +78,11 @@ public class RoleManagerTests
 
         var roles = await roleStore.FindManyAsync(new() { TenantId = Tenant.DefaultTenantId });
 
-        Assert.Single(roles);
-        Assert.Equal("legacy", roles.Single().Id);
+        await Assert.That(roles).HasSingleItem();
+        await Assert.That(roles.Single().Id).IsEqualTo("legacy");
     }
 
-    [Fact]
+    [Test]
     public async Task CreateRoleRejectsExistingRoleId()
     {
         await _roleStore.SaveAsync(new Role
@@ -93,19 +93,19 @@ public class RoleManagerTests
             Permissions = [PermissionNames.All]
         });
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => _manager.CreateRoleAsync("Replacement", [], "admin"));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => _manager.CreateRoleAsync("Replacement", [], "admin"));
 
         var role = await _roleStore.FindAsync(new() { Id = "admin" });
-        Assert.NotNull(role);
-        Assert.Equal("Admin", role.Name);
-        Assert.Equal([PermissionNames.All], role.Permissions);
+        await Assert.That(role).IsNotNull();
+        await Assert.That(role.Name).IsEqualTo("Admin");
+        await Assert.That(role.Permissions).IsEquivalentTo([PermissionNames.All], TUnit.Assertions.Enums.CollectionOrdering.Matching);
     }
 
-    [Fact]
+    [Test]
     public async Task CreateRoleRejectsProvidedAdminRoleIdCollision()
     {
         var manager = new RoleManager(_roleStore, new AdminRoleProvider(), _tenantAccessor);
 
-        await Assert.ThrowsAsync<InvalidOperationException>(() => manager.CreateRoleAsync("Replacement", [], "admin"));
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(() => manager.CreateRoleAsync("Replacement", [], "admin"));
     }
 }

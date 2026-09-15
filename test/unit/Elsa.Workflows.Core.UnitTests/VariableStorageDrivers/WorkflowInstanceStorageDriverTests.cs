@@ -1,16 +1,19 @@
+using System.Diagnostics;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using Elsa.Expressions.Helpers;
 using Elsa.Workflows.Memory;
 using Microsoft.Extensions.Logging.Abstractions;
 using NSubstitute;
+using System.Threading.Tasks;
 
 namespace Elsa.Workflows.Core.UnitTests.VariableStorageDrivers;
 
-[Collection(nameof(WorkflowInstanceStorageDriverTestsCollection))]
 public class WorkflowInstanceStorageDriverTests
 {
-    [Fact]
+    private const string IsolatedTestMarker = "ELSA_WORKFLOW_INSTANCE_STORAGE_DRIVER_ISOLATED_TEST";
+
+    [Test]
     public async Task WriteAsync_WhenSerializeFails_PreservesPreviousValue()
     {
         var harness = CreateHarness(new Variable<string>("name", "kept"));
@@ -23,14 +26,14 @@ public class WorkflowInstanceStorageDriverTests
         await harness.Driver.WriteAsync(id, CreateUnserializableValue(), harness.Context);
 
         var dictionary = GetVariables(harness.Properties);
-        Assert.True(dictionary.ContainsKey(id));
-        Assert.Equal(storedBefore, dictionary[id].ToJsonString());
+        await Assert.That(dictionary.ContainsKey(id)).IsTrue();
+        await Assert.That(dictionary[id].ToJsonString()).IsEqualTo(storedBefore);
 
         var read = await harness.Driver.ReadAsync(id, harness.Context);
-        Assert.Equal("kept", read);
+        await Assert.That(read).IsEqualTo("kept");
     }
 
-    [Fact]
+    [Test]
     public async Task WriteAsync_WhenSerializeFailsWithNoPriorValue_DoesNotCreateEntry()
     {
         var harness = CreateHarness(new Variable<string>("name", ""));
@@ -38,10 +41,10 @@ public class WorkflowInstanceStorageDriverTests
 
         await harness.Driver.WriteAsync(id, CreateUnserializableValue(), harness.Context);
 
-        Assert.False(GetVariables(harness.Properties).ContainsKey(id));
+        await Assert.That(GetVariables(harness.Properties).ContainsKey(id)).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task DeleteAsync_RemovesStoredValue()
     {
         var harness = CreateHarness(new Variable<string>("name", "kept"));
@@ -50,10 +53,10 @@ public class WorkflowInstanceStorageDriverTests
         await harness.Driver.WriteAsync(id, "kept", harness.Context);
         await harness.Driver.DeleteAsync(id, harness.Context);
 
-        Assert.False(GetVariables(harness.Properties).ContainsKey(id));
+        await Assert.That(GetVariables(harness.Properties).ContainsKey(id)).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task ReadAsync_WhenConvertFails_DoesNotReturnUntypedJsonNode()
     {
         var harness = CreateHarness(new Variable<int>("count", 0));
@@ -62,14 +65,21 @@ public class WorkflowInstanceStorageDriverTests
 
         var read = await harness.Driver.ReadAsync(id, harness.Context);
 
-        Assert.Null(read);
-        Assert.False(read is JsonNode);
-        Assert.True(GetVariables(harness.Properties).ContainsKey(id));
+        await Assert.That(read).IsNull();
+        await Assert.That(read is JsonNode).IsFalse();
+        await Assert.That(GetVariables(harness.Properties).ContainsKey(id)).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task ReadAsync_WhenConvertFailsAndStrictMode_Throws()
     {
+        const string testName = nameof(ReadAsync_WhenConvertFailsAndStrictMode_Throws);
+        if (!string.Equals(Environment.GetEnvironmentVariable(IsolatedTestMarker), testName, StringComparison.Ordinal))
+        {
+            await RunIsolatedTestAsync(testName);
+            return;
+        }
+
         var harness = CreateHarness(new Variable<int>("count", 0));
         const string id = "countVariable";
         SeedIncompatibleNode(harness.Properties, id);
@@ -79,14 +89,43 @@ public class WorkflowInstanceStorageDriverTests
         {
             ObjectConverter.StrictMode = true;
 
-            await Assert.ThrowsAnyAsync<Exception>(() => harness.Driver.ReadAsync(id, harness.Context).AsTask());
+            await Assert.That(() => harness.Driver.ReadAsync(id, harness.Context).AsTask()).Throws<Exception>();
 
-            Assert.True(GetVariables(harness.Properties).ContainsKey(id));
+            await Assert.That(GetVariables(harness.Properties).ContainsKey(id)).IsTrue();
         }
         finally
         {
             ObjectConverter.StrictMode = originalStrictMode;
         }
+    }
+
+    private static async Task RunIsolatedTestAsync(string testName)
+    {
+        var startInfo = new ProcessStartInfo
+        {
+            FileName = Environment.GetEnvironmentVariable("DOTNET_HOST_PATH") ?? "dotnet",
+            RedirectStandardError = true,
+            RedirectStandardOutput = true,
+            UseShellExecute = false
+        };
+        startInfo.ArgumentList.Add(typeof(WorkflowInstanceStorageDriverTests).Assembly.Location);
+        startInfo.ArgumentList.Add("--treenode-filter");
+        startInfo.ArgumentList.Add($"/*/*/{nameof(WorkflowInstanceStorageDriverTests)}/{testName}");
+        startInfo.Environment[IsolatedTestMarker] = testName;
+
+        using var process = new Process { StartInfo = startInfo };
+        if (!process.Start())
+            throw new InvalidOperationException($"Could not start isolated test process for {testName}.");
+
+        var standardOutputTask = process.StandardOutput.ReadToEndAsync();
+        var standardErrorTask = process.StandardError.ReadToEndAsync();
+        await process.WaitForExitAsync();
+        var standardOutput = await standardOutputTask;
+        var standardError = await standardErrorTask;
+
+        await Assert.That(process.ExitCode)
+            .IsEqualTo(0)
+            .Because($"Isolated test process for {testName} failed.{Environment.NewLine}{standardOutput}{Environment.NewLine}{standardError}");
     }
 
     private static Harness CreateHarness(Variable variable)
@@ -132,6 +171,3 @@ public class WorkflowInstanceStorageDriverTests
         public CyclicValue Self { get; set; } = null!;
     }
 }
-
-[CollectionDefinition(nameof(WorkflowInstanceStorageDriverTestsCollection), DisableParallelization = true)]
-public sealed class WorkflowInstanceStorageDriverTestsCollection;

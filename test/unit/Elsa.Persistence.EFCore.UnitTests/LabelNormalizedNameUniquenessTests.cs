@@ -11,8 +11,8 @@ namespace Elsa.Persistence.EFCore.UnitTests;
 /// </summary>
 public class LabelNormalizedNameUniquenessTests
 {
-    [Fact]
-    public void Label_HasUniqueIndex_OnTenantIdAndNormalizedName()
+    [Test]
+    public async Task Label_HasUniqueIndex_OnTenantIdAndNormalizedName()
     {
         var builder = new ModelBuilder();
         new Configurations().Configure(builder.Entity<Label>());
@@ -22,19 +22,20 @@ public class LabelNormalizedNameUniquenessTests
             .GetIndexes()
             .Single(x => x.IsUnique);
 
-        Assert.Equal(["TenantId", "NormalizedName"], index.Properties.Select(x => x.Name));
-        Assert.Equal("IX_Label_TenantId_NormalizedName", index.GetDatabaseName());
+        await Assert.That(index.Properties.Select(x => x.Name)).IsEquivalentTo(["TenantId", "NormalizedName"], TUnit.Assertions.Enums.CollectionOrdering.Matching);
+        await Assert.That(index.GetDatabaseName()).IsEqualTo("IX_Label_TenantId_NormalizedName");
     }
 
-    [Fact]
-    public void Label_NameAndNormalizedName_HaveSharedMaxLength()
+    [Test]
+    public async Task Label_NameAndNormalizedName_HaveSharedMaxLength()
     {
         var builder = new ModelBuilder();
         new Configurations().Configure(builder.Entity<Label>());
         var entity = builder.Model.FindEntityType(typeof(Label))!;
 
-        Assert.Equal(Label.NameMaxLength, entity.FindProperty(nameof(Label.Name))!.GetMaxLength());
-        Assert.Equal(Label.NameMaxLength, entity.FindProperty(nameof(Label.NormalizedName))!.GetMaxLength());
-        Assert.Equal(255, Label.NameMaxLength);
+        await Assert.That(entity.FindProperty(nameof(Label.Name))!.GetMaxLength()).IsEqualTo(Label.NameMaxLength);
+        await Assert.That(entity.FindProperty(nameof(Label.NormalizedName))!.GetMaxLength()).IsEqualTo(Label.NameMaxLength);
+        var sharedMaximum = Label.NameMaxLength;
+        await Assert.That(sharedMaximum).IsEqualTo(255);
     }
 }

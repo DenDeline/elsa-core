@@ -4,24 +4,24 @@ namespace Elsa.Labels.UnitTests.Entities;
 
 public class LabelNameMaxLengthTests
 {
-    [Fact]
-    public void Name_WhenLongerThanSharedMaximum_Throws()
+    [Test]
+    public async Task Name_WhenLongerThanSharedMaximum_Throws()
     {
         var label = new Label { Id = "label-1" };
 
-        var exception = Assert.Throws<ArgumentException>(() => label.Name = new string('a', Label.NameMaxLength + 1));
+        var exception = await Assert.That(() => label.Name = new string('a', Label.NameMaxLength + 1)).ThrowsExactly<ArgumentException>();
 
-        Assert.Equal("Name", exception.ParamName);
-        Assert.Contains(Label.NameMaxLength.ToString(), exception.Message);
+        await Assert.That(exception.ParamName).IsEqualTo("Name");
+        await Assert.That(exception.Message).Contains(Label.NameMaxLength.ToString());
     }
 
-    [Fact]
-    public void Name_WhenAtSharedMaximum_Succeeds()
+    [Test]
+    public async Task Name_WhenAtSharedMaximum_Succeeds()
     {
         var name = new string('a', Label.NameMaxLength);
         var label = new Label { Id = "label-1", Name = name };
 
-        Assert.Equal(name, label.Name);
-        Assert.Equal(name, label.NormalizedName);
+        await Assert.That(label.Name).IsEqualTo(name);
+        await Assert.That(label.NormalizedName).IsEqualTo(name);
     }
 }

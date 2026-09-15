@@ -6,6 +6,7 @@ using Elsa.Workflows.Management.Options;
 using Elsa.Workflows.Runtime.Entities;
 using Microsoft.Extensions.Options;
 using NSubstitute;
+using System.Threading.Tasks;
 
 namespace Elsa.Workflows.Runtime.UnitTests.Services;
 
@@ -18,7 +19,7 @@ public class DefaultActivityExecutionMapperTests
     /// Tests that the mapper correctly maps CallStackDepth, SchedulingActivityExecutionId,
     /// and SchedulingActivityId from the ActivityExecutionContext to the record.
     /// </summary>
-    [Fact]
+    [Test]
     public async Task MapAsync_MapsCallStackDepth_Correctly()
     {
         // Arrange
@@ -46,6 +47,8 @@ public class DefaultActivityExecutionMapperTests
         var activity = new WriteLine("Test");
         var fixture = new ActivityTestFixture(activity);
         var activityExecutionContext = await fixture.BuildAsync();
+        await using var serviceProvider = (IAsyncDisposable)activityExecutionContext.WorkflowExecutionContext.ServiceProvider;
+        using var _ = activityExecutionContext;
         
         // Set the properties we want to test
         activityExecutionContext.CallStackDepth = 2;
@@ -56,36 +59,36 @@ public class DefaultActivityExecutionMapperTests
         var record = await mapper.MapAsync(activityExecutionContext);
         
         // Assert
-        Assert.NotNull(record);
-        Assert.Equal(2, record.CallStackDepth);
-        Assert.Equal("context-b", record.SchedulingActivityExecutionId);
-        Assert.Equal("activity-b", record.SchedulingActivityId);
+        await Assert.That(record).IsNotNull();
+        await Assert.That(record.CallStackDepth).IsEqualTo(2);
+        await Assert.That(record.SchedulingActivityExecutionId).IsEqualTo("context-b");
+        await Assert.That(record.SchedulingActivityId).IsEqualTo("activity-b");
     }
 
-    [Fact]
+    [Test]
     public async Task MapAsync_IncludesPropertiesAndPayload_WhenInternalStateIsInclude_EvenIfInputsAreExcluded()
     {
         var record = await MapWithPersistenceAsync(
             LogPersistenceMode.Include,
             inputs: LogPersistenceMode.Exclude);
 
-        Assert.NotNull(record.Properties);
-        Assert.Equal("property-value", record.Properties["InternalKey"]);
-        Assert.NotNull(record.Payload);
-        Assert.Equal("journal-value", record.Payload["JournalKey"]);
-        Assert.False(record.ActivityState?.ContainsKey("Text"));
+        await Assert.That(record.Properties).IsNotNull();
+        await Assert.That(record.Properties["InternalKey"]).IsEqualTo("property-value");
+        await Assert.That(record.Payload).IsNotNull();
+        await Assert.That(record.Payload["JournalKey"]).IsEqualTo("journal-value");
+        await Assert.That(record.ActivityState?.ContainsKey("Text")).IsFalse();
     }
 
-    [Fact]
+    [Test]
     public async Task MapAsync_ExcludesPropertiesAndPayload_WhenInternalStateIsExclude_EvenIfInputsAreIncluded()
     {
         var record = await MapWithPersistenceAsync(
             LogPersistenceMode.Exclude,
             inputs: LogPersistenceMode.Include);
 
-        Assert.Null(record.Properties);
-        Assert.Null(record.Payload);
-        Assert.True(record.ActivityState?.ContainsKey("Text"));
+        await Assert.That(record.Properties).IsNull();
+        await Assert.That(record.Payload).IsNull();
+        await Assert.That(record.ActivityState?.ContainsKey("Text")).IsTrue();
     }
 
     private static async Task<ActivityExecutionRecord> MapWithPersistenceAsync(

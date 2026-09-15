@@ -8,22 +8,22 @@ namespace Elsa.Common.UnitTests.Multitenancy;
 /// </summary>
 public class TenantVisibilityTests
 {
-    [Theory]
-    [InlineData("tenant-a", "tenant-a", true)]
-    [InlineData("tenant-a", "tenant-b", false)]
-    [InlineData(Tenant.AgnosticTenantId, "tenant-a", true)]
-    [InlineData(Tenant.AgnosticTenantId, Tenant.DefaultTenantId, true)]
-    [InlineData(null, Tenant.DefaultTenantId, true)]
-    [InlineData(null, "tenant-a", false)]
-    [InlineData(Tenant.DefaultTenantId, Tenant.DefaultTenantId, true)]
-    [InlineData(Tenant.DefaultTenantId, "tenant-a", false)]
-    public void IsVisible_MatchesSetTenantIdFilter(string? entityTenantId, string ambientTenantId, bool expected)
+    [Test]
+    [Arguments("tenant-a", "tenant-a", true)]
+    [Arguments("tenant-a", "tenant-b", false)]
+    [Arguments(Tenant.AgnosticTenantId, "tenant-a", true)]
+    [Arguments(Tenant.AgnosticTenantId, Tenant.DefaultTenantId, true)]
+    [Arguments(null, Tenant.DefaultTenantId, true)]
+    [Arguments(null, "tenant-a", false)]
+    [Arguments(Tenant.DefaultTenantId, Tenant.DefaultTenantId, true)]
+    [Arguments(Tenant.DefaultTenantId, "tenant-a", false)]
+    public async Task IsVisible_MatchesSetTenantIdFilter(string? entityTenantId, string ambientTenantId, bool expected)
     {
-        Assert.Equal(expected, TenantVisibility.IsVisible(entityTenantId, ambientTenantId));
+        await Assert.That(TenantVisibility.IsVisible(entityTenantId, ambientTenantId)).IsEqualTo(expected);
     }
 
-    [Fact]
-    public void WhereVisibleToTenant_WhenNotAgnostic_HidesOtherTenants()
+    [Test]
+    public async Task WhereVisibleToTenant_WhenNotAgnostic_HidesOtherTenants()
     {
         var queryable = new[]
         {
@@ -35,13 +35,13 @@ public class TenantVisibilityTests
 
         var visible = queryable.WhereVisibleToTenant("tenant-a").Select(x => x.TenantId).ToList();
 
-        Assert.Equal(2, visible.Count);
-        Assert.Contains("tenant-a", visible);
-        Assert.Contains(Tenant.AgnosticTenantId, visible);
+        await Assert.That(visible.Count).IsEqualTo(2);
+        await Assert.That(visible).Contains("tenant-a");
+        await Assert.That(visible).Contains(Tenant.AgnosticTenantId);
     }
 
-    [Fact]
-    public void WhereVisibleToTenant_WhenAgnostic_ReturnsAllRows()
+    [Test]
+    public async Task WhereVisibleToTenant_WhenAgnostic_ReturnsAllRows()
     {
         var queryable = new[]
         {
@@ -51,45 +51,45 @@ public class TenantVisibilityTests
 
         var visible = queryable.WhereVisibleToTenant("tenant-a", tenantAgnostic: true).ToList();
 
-        Assert.Equal(2, visible.Count);
+        await Assert.That(visible.Count).IsEqualTo(2);
     }
 
-    [Theory]
-    [InlineData("tenant-a", "tenant-a", true)]
-    [InlineData("tenant-a", "tenant-b", false)]
-    [InlineData(Tenant.AgnosticTenantId, Tenant.AgnosticTenantId, true)]
-    [InlineData(Tenant.AgnosticTenantId, "tenant-a", false)]
-    [InlineData(Tenant.AgnosticTenantId, Tenant.DefaultTenantId, false)]
-    [InlineData(null, Tenant.DefaultTenantId, true)]
-    [InlineData(null, "tenant-a", false)]
-    [InlineData(Tenant.DefaultTenantId, Tenant.DefaultTenantId, true)]
-    public void CanReplace_MatchesMemoryAlterationOwnership(string? existingTenantId, string writerTenantId, bool expected)
+    [Test]
+    [Arguments("tenant-a", "tenant-a", true)]
+    [Arguments("tenant-a", "tenant-b", false)]
+    [Arguments(Tenant.AgnosticTenantId, Tenant.AgnosticTenantId, true)]
+    [Arguments(Tenant.AgnosticTenantId, "tenant-a", false)]
+    [Arguments(Tenant.AgnosticTenantId, Tenant.DefaultTenantId, false)]
+    [Arguments(null, Tenant.DefaultTenantId, true)]
+    [Arguments(null, "tenant-a", false)]
+    [Arguments(Tenant.DefaultTenantId, Tenant.DefaultTenantId, true)]
+    public async Task CanReplace_MatchesMemoryAlterationOwnership(string? existingTenantId, string writerTenantId, bool expected)
     {
-        Assert.Equal(expected, TenantVisibility.CanReplace(existingTenantId, writerTenantId));
+        await Assert.That(TenantVisibility.CanReplace(existingTenantId, writerTenantId)).IsEqualTo(expected);
     }
 
-    [Theory]
-    [InlineData("tenant-a", "tenant-a", "tenant-a", true)]
-    [InlineData("tenant-a", "tenant-b", "tenant-b", false)]
-    [InlineData("tenant-a", "tenant-a", "tenant-b", false)]
-    [InlineData(Tenant.AgnosticTenantId, Tenant.AgnosticTenantId, Tenant.AgnosticTenantId, true)]
-    [InlineData(Tenant.AgnosticTenantId, Tenant.AgnosticTenantId, "tenant-a", false)]
-    [InlineData(Tenant.AgnosticTenantId, "tenant-a", "tenant-a", false)]
-    [InlineData(Tenant.AgnosticTenantId, "tenant-a", Tenant.AgnosticTenantId, false)]
-    [InlineData(null, Tenant.DefaultTenantId, Tenant.DefaultTenantId, true)]
-    [InlineData(null, "tenant-a", "tenant-a", false)]
-    [InlineData(null, Tenant.DefaultTenantId, "tenant-a", false)]
-    public void CanReplaceOwnedRow_GatesNamedRowsOnAmbientNotForgedSource(
+    [Test]
+    [Arguments("tenant-a", "tenant-a", "tenant-a", true)]
+    [Arguments("tenant-a", "tenant-b", "tenant-b", false)]
+    [Arguments("tenant-a", "tenant-a", "tenant-b", false)]
+    [Arguments(Tenant.AgnosticTenantId, Tenant.AgnosticTenantId, Tenant.AgnosticTenantId, true)]
+    [Arguments(Tenant.AgnosticTenantId, Tenant.AgnosticTenantId, "tenant-a", false)]
+    [Arguments(Tenant.AgnosticTenantId, "tenant-a", "tenant-a", false)]
+    [Arguments(Tenant.AgnosticTenantId, "tenant-a", Tenant.AgnosticTenantId, false)]
+    [Arguments(null, Tenant.DefaultTenantId, Tenant.DefaultTenantId, true)]
+    [Arguments(null, "tenant-a", "tenant-a", false)]
+    [Arguments(null, Tenant.DefaultTenantId, "tenant-a", false)]
+    public async Task CanReplaceOwnedRow_GatesNamedRowsOnAmbientNotForgedSource(
         string? existingTenantId,
         string? sourceTenantId,
         string ambientTenantId,
         bool expected)
     {
-        Assert.Equal(expected, TenantVisibility.CanReplaceOwnedRow(existingTenantId, sourceTenantId, ambientTenantId));
+        await Assert.That(TenantVisibility.CanReplaceOwnedRow(existingTenantId, sourceTenantId, ambientTenantId)).IsEqualTo(expected);
     }
 
-    [Fact]
-    public void WhereVisibleToTenant_WhenAmbientIsDefault_IncludesNullTenantId()
+    [Test]
+    public async Task WhereVisibleToTenant_WhenAmbientIsDefault_IncludesNullTenantId()
     {
         var queryable = new[]
         {
@@ -99,8 +99,8 @@ public class TenantVisibilityTests
 
         var visible = queryable.WhereVisibleToTenant(Tenant.DefaultTenantId).ToList();
 
-        Assert.Single(visible);
-        Assert.Null(visible[0].TenantId);
+        await Assert.That(visible).HasSingleItem();
+        await Assert.That(visible[0].TenantId).IsNull();
     }
 
     private static TestEntity Entity(string? tenantId) => new()

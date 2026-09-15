@@ -4,8 +4,6 @@ using Elsa.Expressions.Models;
 using Elsa.Testing.Shared;
 using Jint;
 using Microsoft.Extensions.DependencyInjection;
-using Xunit;
-using Xunit.Abstractions;
 
 namespace Elsa.JavaScript.IntegrationTests;
 
@@ -14,54 +12,66 @@ namespace Elsa.JavaScript.IntegrationTests;
 /// while dictionary-like objects (such as the <c>variables</c> and <c>args</c> containers) should behave
 /// like plain objects.
 /// </summary>
-public class ObjectWrappingTests
+public class ObjectWrappingTests : IAsyncDisposable
 {
     private readonly IServiceProvider _serviceProvider;
     private readonly IJavaScriptEvaluator _evaluator;
 
-    public ObjectWrappingTests(ITestOutputHelper testOutputHelper)
+    public ObjectWrappingTests()
     {
-        _serviceProvider = new TestApplicationBuilder(testOutputHelper).Build();
+        _serviceProvider = new TestApplicationBuilder(TestContext.Current!.Output.StandardOutput).Build();
         _evaluator = _serviceProvider.GetRequiredService<IJavaScriptEvaluator>();
     }
 
-    [Fact(DisplayName = "The variables container is a plain object, not an array")]
-    public async Task VariablesContainerIsNotArrayLike()
+    public async ValueTask DisposeAsync()
     {
-        Assert.Equal("false", await EvaluateAsync<string>("return '' + (Object.getPrototypeOf(variables) === Array.prototype);"));
-        Assert.Equal("undefined", await EvaluateAsync<string>("return typeof variables.map;"));
-        Assert.Equal("undefined", await EvaluateAsync<string>("return typeof variables.filter;"));
-        Assert.Equal("undefined", await EvaluateAsync<string>("return typeof variables.length;"));
+        if (_serviceProvider is IAsyncDisposable asyncDisposable)
+            await asyncDisposable.DisposeAsync();
+        else if (_serviceProvider is IDisposable disposable)
+            disposable.Dispose();
     }
 
-    [Fact(DisplayName = "A dictionary-like object is a plain object, not an array")]
+    [Test]
+    [DisplayName("The variables container is a plain object, not an array")]
+    public async Task VariablesContainerIsNotArrayLike()
+    {
+        await Assert.That(await EvaluateAsync<string>("return '' + (Object.getPrototypeOf(variables) === Array.prototype);")).IsEqualTo("false");
+        await Assert.That(await EvaluateAsync<string>("return typeof variables.map;")).IsEqualTo("undefined");
+        await Assert.That(await EvaluateAsync<string>("return typeof variables.filter;")).IsEqualTo("undefined");
+        await Assert.That(await EvaluateAsync<string>("return typeof variables.length;")).IsEqualTo("undefined");
+    }
+
+    [Test]
+    [DisplayName("A dictionary-like object is a plain object, not an array")]
     public async Task DictionaryLikeObjectsAreNotArrayLike()
     {
         var expando = (IDictionary<string, object?>)new ExpandoObject();
         expando["greeting"] = "hello";
 
-        Assert.Equal("undefined", await EvaluateAsync<string>("return typeof subject.map;", engine => engine.SetValue("subject", expando)));
-        Assert.Equal("hello", await EvaluateAsync<string>("return subject.greeting;", engine => engine.SetValue("subject", expando)));
-        Assert.Equal("undefined", await EvaluateAsync<string>("return typeof subject.map;", engine => engine.SetValue("subject", new Dictionary<string, object> { ["greeting"] = "hello" })));
+        await Assert.That(await EvaluateAsync<string>("return typeof subject.map;", engine => engine.SetValue("subject", expando))).IsEqualTo("undefined");
+        await Assert.That(await EvaluateAsync<string>("return subject.greeting;", engine => engine.SetValue("subject", expando))).IsEqualTo("hello");
+        await Assert.That(await EvaluateAsync<string>("return typeof subject.map;", engine => engine.SetValue("subject", new Dictionary<string, object> { ["greeting"] = "hello" }))).IsEqualTo("undefined");
     }
 
-    [Theory(DisplayName = "Array-like CLR collections expose the array prototype")]
-    [InlineData("list")]
-    [InlineData("set")]
-    [InlineData("array")]
+    [Test]
+    [DisplayName("Array-like CLR collections expose the array prototype")]
+    [Arguments("list")]
+    [Arguments("set")]
+    [Arguments("array")]
     public async Task ArrayLikeCollectionsExposeArrayPrototype(string name)
     {
-        Assert.Equal("function", await EvaluateAsync<string>($"return typeof {name}.map;", ConfigureCollections));
-        Assert.Equal("true", await EvaluateAsync<string>($"return '' + (Object.getPrototypeOf({name}) === Array.prototype);", ConfigureCollections));
+        await Assert.That(await EvaluateAsync<string>($"return typeof {name}.map;", ConfigureCollections)).IsEqualTo("function");
+        await Assert.That(await EvaluateAsync<string>($"return '' + (Object.getPrototypeOf({name}) === Array.prototype);", ConfigureCollections)).IsEqualTo("true");
     }
 
-    [Theory(DisplayName = "Indexable CLR collections support array iteration methods")]
-    [InlineData("list")]
-    [InlineData("array")]
+    [Test]
+    [DisplayName("Indexable CLR collections support array iteration methods")]
+    [Arguments("list")]
+    [Arguments("array")]
     public async Task IndexableCollectionsSupportArrayMethods(string name)
     {
-        Assert.Equal("2,4,6", await EvaluateAsync<string>($"return {name}.map(x => x * 2).join(',');", ConfigureCollections));
-        Assert.Equal("6", await EvaluateAsync<string>($"return '' + {name}.reduce((a, b) => a + b, 0);", ConfigureCollections));
+        await Assert.That(await EvaluateAsync<string>($"return {name}.map(x => x * 2).join(',');", ConfigureCollections)).IsEqualTo("2,4,6");
+        await Assert.That(await EvaluateAsync<string>($"return '' + {name}.reduce((a, b) => a + b, 0);", ConfigureCollections)).IsEqualTo("6");
     }
 
     private static void ConfigureCollections(Engine engine)

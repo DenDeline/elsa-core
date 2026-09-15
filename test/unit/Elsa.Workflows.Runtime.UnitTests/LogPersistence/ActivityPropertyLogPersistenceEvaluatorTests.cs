@@ -9,34 +9,35 @@ using Elsa.Workflows.Management.Options;
 using Elsa.Workflows.Options;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging.Abstractions;
+using System.Threading.Tasks;
 
 namespace Elsa.Workflows.Runtime.UnitTests.LogPersistence;
 
 public class ActivityPropertyLogPersistenceEvaluatorTests
 {
-    [Fact]
+    [Test]
     public async Task Evaluate_HonorsActivityInternalStateInclude_WhenDefaultIsExclude()
     {
         var activity = CreateWriteLine(defaultMode: typeof(Exclude), internalState: typeof(Include));
 
         var map = await EvaluateAsync(activity);
 
-        Assert.Equal(LogPersistenceMode.Include, map.InternalState);
-        Assert.Equal(LogPersistenceMode.Exclude, map.Inputs[nameof(WriteLine.Text)]);
+        await Assert.That(map.InternalState).IsEqualTo(LogPersistenceMode.Include);
+        await Assert.That(map.Inputs[nameof(WriteLine.Text)]).IsEqualTo(LogPersistenceMode.Exclude);
     }
 
-    [Fact]
+    [Test]
     public async Task Evaluate_HonorsActivityInternalStateExclude_WhenDefaultIsInclude()
     {
         var activity = CreateWriteLine(defaultMode: typeof(Include), internalState: typeof(Exclude));
 
         var map = await EvaluateAsync(activity);
 
-        Assert.Equal(LogPersistenceMode.Exclude, map.InternalState);
-        Assert.Equal(LogPersistenceMode.Include, map.Inputs[nameof(WriteLine.Text)]);
+        await Assert.That(map.InternalState).IsEqualTo(LogPersistenceMode.Exclude);
+        await Assert.That(map.Inputs[nameof(WriteLine.Text)]).IsEqualTo(LogPersistenceMode.Include);
     }
 
-    [Fact]
+    [Test]
     public async Task Evaluate_FallsBackToWorkflowInternalState_WhenActivityInternalStateIsMissing()
     {
         var activity = CreateWriteLine(defaultMode: typeof(Exclude));
@@ -50,11 +51,11 @@ public class ActivityPropertyLogPersistenceEvaluatorTests
             };
         });
 
-        Assert.Equal(LogPersistenceMode.Include, map.InternalState);
-        Assert.Equal(LogPersistenceMode.Exclude, map.Inputs[nameof(WriteLine.Text)]);
+        await Assert.That(map.InternalState).IsEqualTo(LogPersistenceMode.Include);
+        await Assert.That(map.Inputs[nameof(WriteLine.Text)]).IsEqualTo(LogPersistenceMode.Exclude);
     }
 
-    [Fact]
+    [Test]
     public async Task Evaluate_ActivityInternalStateOverridesWorkflowInternalState()
     {
         var activity = CreateWriteLine(defaultMode: typeof(Exclude), internalState: typeof(Exclude));
@@ -68,21 +69,21 @@ public class ActivityPropertyLogPersistenceEvaluatorTests
             };
         });
 
-        Assert.Equal(LogPersistenceMode.Exclude, map.InternalState);
+        await Assert.That(map.InternalState).IsEqualTo(LogPersistenceMode.Exclude);
     }
 
-    [Fact]
+    [Test]
     public async Task Evaluate_FallsBackToDefault_WhenInternalStateIsMissing()
     {
         var activity = CreateWriteLine(defaultMode: typeof(Exclude));
 
         var map = await EvaluateAsync(activity);
 
-        Assert.Equal(LogPersistenceMode.Exclude, map.InternalState);
-        Assert.Equal(LogPersistenceMode.Exclude, map.Inputs[nameof(WriteLine.Text)]);
+        await Assert.That(map.InternalState).IsEqualTo(LogPersistenceMode.Exclude);
+        await Assert.That(map.Inputs[nameof(WriteLine.Text)]).IsEqualTo(LogPersistenceMode.Exclude);
     }
 
-    [Fact]
+    [Test]
     public async Task Evaluate_IgnoresTopLevelCustomPropertiesInternalState()
     {
         var activity = CreateWriteLine(defaultMode: typeof(Exclude));
@@ -90,10 +91,10 @@ public class ActivityPropertyLogPersistenceEvaluatorTests
 
         var map = await EvaluateAsync(activity);
 
-        Assert.Equal(LogPersistenceMode.Exclude, map.InternalState);
+        await Assert.That(map.InternalState).IsEqualTo(LogPersistenceMode.Exclude);
     }
 
-    [Fact]
+    [Test]
     public async Task Evaluate_UsesWorkflowRootContext_ForWorkflowInternalStateExpression()
     {
         var activity = CreateWriteLine(defaultMode: typeof(Exclude));
@@ -125,7 +126,7 @@ public class ActivityPropertyLogPersistenceEvaluatorTests
 
         var map = await CreateEvaluator(childContext).EvaluateLogPersistenceModesAsync(childContext);
 
-        Assert.Equal(LogPersistenceMode.Include, map.InternalState);
+        await Assert.That(map.InternalState).IsEqualTo(LogPersistenceMode.Include);
     }
 
     private static WriteLine CreateWriteLine(Type defaultMode, Type? internalState = null)

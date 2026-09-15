@@ -6,7 +6,7 @@ namespace Elsa.Diagnostics.StructuredLogs.Persistence.Sqlite.IntegrationTests;
 
 public class SqliteStructuredLogSourceTests
 {
-    [Fact]
+    [Test]
     public async Task QueryAsync_WhenTimestampsTie_OrdersDeterministicallyAcrossSources()
     {
         await using var host = new SqliteStructuredLogTestHost();
@@ -17,10 +17,12 @@ public class SqliteStructuredLogSourceTests
 
         var result = await host.Store.QueryAsync(new() { Take = 10 });
 
-        Assert.Equal(["pod-a", "pod-b"], result.Items.Select(x => x.SourceId));
+        await Assert.That(result.Items.Select(x => x.SourceId)).IsEquivalentTo(
+            ["pod-a", "pod-b"],
+            TUnit.Assertions.Enums.CollectionOrdering.Matching);
     }
 
-    [Fact]
+    [Test]
     public async Task ListSourcesAsync_PrefersRegistryMetadataAndHeartbeat()
     {
         await using var host = new SqliteStructuredLogTestHost(configureStructuredLogs: options =>
@@ -30,18 +32,18 @@ public class SqliteStructuredLogSourceTests
         host.SourceRegistry.MarkSeen("stale-pod", DateTimeOffset.UtcNow.AddMinutes(-1));
 
         var sources = await host.Store.ListSourcesAsync();
-        var currentSource = Assert.Single(sources, x => x.Id == current.Id);
-        var staleSource = Assert.Single(sources, x => x.Id == "stale-pod");
+        var currentSource = (await Assert.That(sources).HasSingleItem(x => x.Id == current.Id));
+        var staleSource = (await Assert.That(sources).HasSingleItem(x => x.Id == "stale-pod"));
 
-        Assert.Equal(current.DisplayName, currentSource.DisplayName);
-        Assert.Equal(current.ServiceName, currentSource.ServiceName);
-        Assert.Equal(current.ProcessId, currentSource.ProcessId);
-        Assert.NotEqual(0, currentSource.ProcessId);
-        Assert.Equal(StructuredLogSourceStatus.Connected, currentSource.Status);
-        Assert.Equal(StructuredLogSourceStatus.Stale, staleSource.Status);
+        await Assert.That(currentSource.DisplayName).IsEqualTo(current.DisplayName);
+        await Assert.That(currentSource.ServiceName).IsEqualTo(current.ServiceName);
+        await Assert.That(currentSource.ProcessId).IsEqualTo(current.ProcessId);
+        await Assert.That(currentSource.ProcessId).IsNotEqualTo(0);
+        await Assert.That(currentSource.Status).IsEqualTo(StructuredLogSourceStatus.Connected);
+        await Assert.That(staleSource.Status).IsEqualTo(StructuredLogSourceStatus.Stale);
     }
 
-    [Fact]
+    [Test]
     public async Task WriteAsync_UpdatesRegistryBeforeFlush()
     {
         await using var host = new SqliteStructuredLogTestHost();
@@ -49,13 +51,13 @@ public class SqliteStructuredLogSourceTests
 
         await host.Buffer.WriteAsync(CreateLog("buffered-1", 1, "buffered-pod", receivedAt));
 
-        var source = Assert.Single(await host.Store.ListSourcesAsync(), x => x.Id == "buffered-pod");
-        Assert.Equal(receivedAt, source.LastSeen);
-        Assert.Equal(StructuredLogSourceStatus.Connected, source.Status);
-        Assert.Empty((await host.Store.QueryAsync(new() { Take = 10 })).Items);
+        var source = (await Assert.That(await host.Store.ListSourcesAsync()).HasSingleItem(x => x.Id == "buffered-pod"));
+        await Assert.That(source.LastSeen).IsEqualTo(receivedAt);
+        await Assert.That(source.Status).IsEqualTo(StructuredLogSourceStatus.Connected);
+        await Assert.That((await host.Store.QueryAsync(new() { Take = 10 })).Items).IsEmpty();
     }
 
-    [Fact]
+    [Test]
     public async Task ListSourcesAsync_UsesPersistedSourcesOnlyAsFallback()
     {
         await using var firstHost = new SqliteStructuredLogTestHost();
@@ -65,18 +67,18 @@ public class SqliteStructuredLogSourceTests
         await using var secondHost = new SqliteStructuredLogTestHost(options => options.ConnectionString = connectionString);
         var current = secondHost.SourceRegistry.Current;
         var sources = await secondHost.Store.ListSourcesAsync();
-        var remote = Assert.Single(sources, x => x.Id == "remote-pod");
-        var local = Assert.Single(sources, x => x.Id == current.Id);
+        var remote = (await Assert.That(sources).HasSingleItem(x => x.Id == "remote-pod"));
+        var local = (await Assert.That(sources).HasSingleItem(x => x.Id == current.Id));
 
-        Assert.Equal("remote-pod", remote.DisplayName);
-        Assert.Equal(0, remote.ProcessId);
-        Assert.Equal(StructuredLogSourceStatus.Connected, remote.Status);
-        Assert.Equal(current.DisplayName, local.DisplayName);
-        Assert.Equal(current.ProcessId, local.ProcessId);
-        Assert.NotEqual(0, local.ProcessId);
+        await Assert.That(remote.DisplayName).IsEqualTo("remote-pod");
+        await Assert.That(remote.ProcessId).IsEqualTo(0);
+        await Assert.That(remote.Status).IsEqualTo(StructuredLogSourceStatus.Connected);
+        await Assert.That(local.DisplayName).IsEqualTo(current.DisplayName);
+        await Assert.That(local.ProcessId).IsEqualTo(current.ProcessId);
+        await Assert.That(local.ProcessId).IsNotEqualTo(0);
     }
 
-    [Fact]
+    [Test]
     public async Task StoreWriteManyAsync_WhenFlushIsOlder_DoesNotRegressLastSeen()
     {
         await using var host = new SqliteStructuredLogTestHost();
@@ -87,12 +89,12 @@ public class SqliteStructuredLogSourceTests
         await host.Buffer.WriteAsync(CreateLog("newer-1", 2, "pod-b", newer));
         await store.WriteManyAsync([CreateLog("older-1", 1, "pod-b", older)]);
 
-        var source = Assert.Single(host.SourceRegistry.List(), x => x.Id == "pod-b");
-        Assert.Equal(newer, source.LastSeen);
-        Assert.Equal(StructuredLogSourceStatus.Connected, source.Status);
+        var source = (await Assert.That(host.SourceRegistry.List()).HasSingleItem(x => x.Id == "pod-b"));
+        await Assert.That(source.LastSeen).IsEqualTo(newer);
+        await Assert.That(source.Status).IsEqualTo(StructuredLogSourceStatus.Connected);
     }
 
-    [Fact]
+    [Test]
     public async Task ListSourcesAsync_WhenRegistryHasCaseDistinctIds_KeepsBoth()
     {
         await using var host = new SqliteStructuredLogTestHost();
@@ -102,12 +104,12 @@ public class SqliteStructuredLogSourceTests
 
         var sources = await host.Store.ListSourcesAsync();
 
-        Assert.Contains(sources, x => x.Id == "pod-a");
-        Assert.Contains(sources, x => x.Id == "POD-A");
-        Assert.Equal(2, sources.Count(x => x.Id.Equals("pod-a", StringComparison.OrdinalIgnoreCase)));
+        await Assert.That(sources).Contains(x => x.Id == "pod-a");
+        await Assert.That(sources).Contains(x => x.Id == "POD-A");
+        await Assert.That(sources.Count(x => x.Id.Equals("pod-a", StringComparison.OrdinalIgnoreCase))).IsEqualTo(2);
     }
 
-    [Fact]
+    [Test]
     public async Task StoreWriteManyAsync_MarksRegistrySeen()
     {
         await using var host = new SqliteStructuredLogTestHost();
@@ -116,9 +118,9 @@ public class SqliteStructuredLogSourceTests
 
         await store.WriteManyAsync([CreateLog("direct-1", 1, "direct-pod", receivedAt)]);
 
-        var source = Assert.Single(host.SourceRegistry.List(), x => x.Id == "direct-pod");
-        Assert.Equal(receivedAt, source.LastSeen);
-        Assert.Equal(StructuredLogSourceStatus.Connected, source.Status);
+        var source = (await Assert.That(host.SourceRegistry.List()).HasSingleItem(x => x.Id == "direct-pod"));
+        await Assert.That(source.LastSeen).IsEqualTo(receivedAt);
+        await Assert.That(source.Status).IsEqualTo(StructuredLogSourceStatus.Connected);
     }
 
     private static StructuredLogEvent CreateLog(string id, long sequence, string sourceId, DateTimeOffset timestamp)

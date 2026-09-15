@@ -19,19 +19,28 @@ namespace Elsa.Workflows.ComponentTests.Scenarios.DistributedLockResilience;
 public class DistributedLockResilienceTests(App app) : AppComponentTest(app)
 {
     private const int MaxRetryAttempts = 3;
+    private SelectiveMockLockProvider? _selectiveMockProvider;
 
     // Selective mock provider - only mocks specific locks, not all locks globally
-    private SelectiveMockLockProvider SelectiveMockProvider => Scope.ServiceProvider.GetRequiredService<SelectiveMockLockProvider>();
+    private SelectiveMockLockProvider SelectiveMockProvider =>
+        _selectiveMockProvider ??= Scope.ServiceProvider.GetRequiredService<SelectiveMockLockProvider>();
 
     private ITransientExceptionDetector TransientExceptionDetector => Scope.ServiceProvider.GetRequiredService<ITransientExceptionDetector>();
     private ILogger<DistributedLockResilienceTests> Logger => Scope.ServiceProvider.GetRequiredService<ILogger<DistributedLockResilienceTests>>();
     private DistributedLockingOptions LockOptions => Scope.ServiceProvider.GetRequiredService<IOptions<DistributedLockingOptions>>().Value;
     private ResiliencePipeline RetryPipeline => CreateRetryPipeline(TransientExceptionDetector, Logger);
 
-    [Theory]
-    [InlineData(1, 2, false)] // Single failure, succeeds on retry
-    [InlineData(2, 3, false)] // Two failures, succeeds on third attempt
-    [InlineData(4, 4, true)]  // Four failures, exhausts retries (MaxRetryAttempts = 3)
+    protected override ValueTask OnDisposeAsync()
+    {
+        _selectiveMockProvider?.Reset();
+        _selectiveMockProvider = null;
+        return ValueTask.CompletedTask;
+    }
+
+    [Test]
+    [Arguments(1, 2, false)] // Single failure, succeeds on retry
+    [Arguments(2, 3, false)] // Two failures, succeeds on third attempt
+    [Arguments(4, 4, true)]  // Four failures, exhausts retries (MaxRetryAttempts = 3)
     public async Task AcquireLockWithRetry_AcquisitionFailures_BehavesAsExpected(int failureCount, int expectedAttemptCount, bool shouldThrow)
     {
         // Arrange - Mock this specific lock only
@@ -43,22 +52,25 @@ public class DistributedLockResilienceTests(App app) : AppComponentTest(app)
         // Act & Assert
         if (shouldThrow)
         {
-            await Assert.ThrowsAsync<TimeoutException>(async () => await AcquireLockWithRetryAsync(lockName, mockProvider));
+            await Assert.ThrowsExactlyAsync<TimeoutException>(async () =>
+            {
+                await using var unexpectedHandle = await AcquireLockWithRetryAsync(lockName, mockProvider);
+            });
         }
         else
         {
             await using var handle = await AcquireLockWithRetryAsync(lockName, mockProvider);
-            Assert.NotNull(handle);
+            await Assert.That(handle).IsNotNull();
         }
 
         // Assert exact count - only this lock is mocked
-        Assert.Equal(expectedAttemptCount, mockProvider.AcquisitionAttemptCount);
+        await Assert.That(mockProvider.AcquisitionAttemptCount).IsEqualTo(expectedAttemptCount);
     }
 
-    [Theory]
-    [InlineData(1, false)] // Single failure, succeeds on retry (2 attempts)
-    [InlineData(2, false)] // Two failures, succeeds on third attempt (3 attempts)
-    [InlineData(4, true)]  // Four failures, exhausts retries (MaxRetryAttempts = 3, so 4 attempts total)
+    [Test]
+    [Arguments(1, false)] // Single failure, succeeds on retry (2 attempts)
+    [Arguments(2, false)] // Two failures, succeeds on third attempt (3 attempts)
+    [Arguments(4, true)]  // Four failures, exhausts retries (MaxRetryAttempts = 3, so 4 attempts total)
     public async Task RunInstanceAsync_TransientLockFailures_RetriesCorrectly(int failureCount, bool shouldThrow)
     {
         // Arrange
@@ -77,23 +89,23 @@ public class DistributedLockResilienceTests(App app) : AppComponentTest(app)
         // Act & Assert
         if (shouldThrow)
         {
-            await Assert.ThrowsAsync<TimeoutException>(async () =>
+            await Assert.ThrowsExactlyAsync<TimeoutException>(async () =>
                 await workflowClient.RunInstanceAsync(runRequest));
         }
         else
         {
             var response = await workflowClient.RunInstanceAsync(runRequest);
-            Assert.NotNull(response);
+            await Assert.That(response).IsNotNull();
         }
 
         // Assert exact count - only this specific workflow instance lock is mocked
         // When shouldThrow=true, all attempts fail: MaxRetryAttempts+1 (initial + retries)
         // When shouldThrow=false, we succeed after failures: failureCount+1 (failures + success)
         var expectedAttempts = shouldThrow ? MaxRetryAttempts + 1 : failureCount + 1;
-        Assert.Equal(expectedAttempts, mockProvider.AcquisitionAttemptCount);
+        await Assert.That(mockProvider.AcquisitionAttemptCount).IsEqualTo(expectedAttempts);
     }
 
-    [Fact]
+    [Test]
     public async Task RunInstanceAsync_TransientReleaseFailure_ShouldLogButNotThrow()
     {
         // Arrange
@@ -111,12 +123,11 @@ public class DistributedLockResilienceTests(App app) : AppComponentTest(app)
         var response = await workflowClient.CreateAndRunInstanceAsync(request);
 
         // Assert
-        Assert.NotNull(response);
-        Assert.NotNull(response.WorkflowInstanceId);
+        await Assert.That(response).IsNotNull();
+        await Assert.That(response.WorkflowInstanceId).IsNotNull();
 
         // Verify at least one release occurred
-        Assert.True(mockProvider.ReleaseAttemptCount >= 1,
-            $"Expected at least 1 release attempt, but got {mockProvider.ReleaseAttemptCount}");
+        await Assert.That(mockProvider.ReleaseAttemptCount >= 1).IsTrue().Because($"Expected at least 1 release attempt, but got {mockProvider.ReleaseAttemptCount}");
     }
 
     private async Task<IDistributedSynchronizationHandle?> AcquireLockWithRetryAsync(string lockName, TestDistributedLockProvider mockProvider) =>

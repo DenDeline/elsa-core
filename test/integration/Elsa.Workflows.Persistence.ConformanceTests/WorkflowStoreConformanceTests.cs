@@ -15,7 +15,7 @@ public abstract class WorkflowStoreConformanceTests
 {
     protected abstract Task<WorkflowStoreScenario> CreateScenarioAsync();
 
-    [Fact]
+    [Test]
     public async Task TriggerLogicalKeysAreUniqueAndReplaceAsyncSkipsExistingKeys()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -25,26 +25,26 @@ public abstract class WorkflowStoreConformanceTests
         await scenario.AssertUniquenessConflictAsync(() => scenario.Triggers.SaveAsync(Trigger("other-id", hash: "hash-1")).AsTask());
 
         var afterConflict = (await scenario.Triggers.FindManyAsync(new TriggerFilter { TenantAgnostic = true })).ToList();
-        Assert.Equal("existing-id", Assert.Single(afterConflict).Id);
+        await Assert.That((await Assert.That(afterConflict).HasSingleItem()).Id).IsEqualTo("existing-id");
 
         await scenario.Triggers.SaveAsync(Trigger("existing-id", hash: "hash-2", workflowDefinitionVersionId: "v2"));
         var updated = await scenario.Triggers.FindAsync(new TriggerFilter { Id = "existing-id" });
-        Assert.Equal("hash-2", updated!.Hash);
-        Assert.Equal("v2", updated.WorkflowDefinitionVersionId);
+        await Assert.That(updated!.Hash).IsEqualTo("hash-2");
+        await Assert.That(updated.WorkflowDefinitionVersionId).IsEqualTo("v2");
 
         await scenario.Triggers.ReplaceAsync([], [Trigger("batch-1"), Trigger("batch-2")]);
         var afterBatch = (await scenario.Triggers.FindManyAsync(new TriggerFilter { Hash = "hash-1", TenantAgnostic = true })).ToList();
-        Assert.Equal("batch-1", Assert.Single(afterBatch).Id);
+        await Assert.That((await Assert.That(afterBatch).HasSingleItem()).Id).IsEqualTo("batch-1");
 
         await scenario.Triggers.ReplaceAsync([], [Trigger("skipped-id")]);
         var afterSkip = (await scenario.Triggers.FindManyAsync(new TriggerFilter { Hash = "hash-1", TenantAgnostic = true })).ToList();
-        Assert.Equal("batch-1", Assert.Single(afterSkip).Id);
+        await Assert.That((await Assert.That(afterSkip).HasSingleItem()).Id).IsEqualTo("batch-1");
 
         await scenario.Triggers.ReplaceAsync(afterSkip, [Trigger("replacement-id", workflowDefinitionVersionId: "v3")]);
         var afterReplace = (await scenario.Triggers.FindManyAsync(new TriggerFilter { Hash = "hash-1", TenantAgnostic = true })).ToList();
-        var replacement = Assert.Single(afterReplace);
-        Assert.Equal("replacement-id", replacement.Id);
-        Assert.Equal("v3", replacement.WorkflowDefinitionVersionId);
+        var replacement = (await Assert.That(afterReplace).HasSingleItem());
+        await Assert.That(replacement.Id).IsEqualTo("replacement-id");
+        await Assert.That(replacement.WorkflowDefinitionVersionId).IsEqualTo("v3");
 
         var tenantA = Trigger("id-a", hash: "shared-hash");
         tenantA.TenantId = "tenant-a";
@@ -52,33 +52,33 @@ public abstract class WorkflowStoreConformanceTests
         tenantB.TenantId = "tenant-b";
         await scenario.Triggers.ReplaceAsync([], [tenantA, tenantB]);
         var bothTenants = (await scenario.Triggers.FindManyAsync(new TriggerFilter { Hash = "shared-hash", TenantAgnostic = true })).ToList();
-        Assert.Equal(2, bothTenants.Count);
-        Assert.Contains(bothTenants, x => x.Id == "id-a");
-        Assert.Contains(bothTenants, x => x.Id == "id-b");
+        await Assert.That(bothTenants.Count).IsEqualTo(2);
+        await Assert.That(bothTenants).Contains(x => x.Id == "id-a");
+        await Assert.That(bothTenants).Contains(x => x.Id == "id-b");
     }
 
-    [Fact]
+    [Test]
     public async Task TriggerTenantIsolationHonorsAmbientTenantAndTenantAgnostic()
     {
         await using var scenario = await CreateScenarioAsync();
         await SeedMixedTriggersAsync(scenario);
 
         var visible = (await scenario.Triggers.FindManyAsync(new TriggerFilter())).ToList();
-        Assert.Equal(2, visible.Count);
-        Assert.Contains(visible, x => x.Id == "id-a");
-        Assert.Contains(visible, x => x.Id == "id-star");
-        Assert.DoesNotContain(visible, x => x.Id == "id-b");
+        await Assert.That(visible.Count).IsEqualTo(2);
+        await Assert.That(visible).Contains(x => x.Id == "id-a");
+        await Assert.That(visible).Contains(x => x.Id == "id-star");
+        await Assert.That(visible).DoesNotContain(x => x.Id == "id-b");
 
         var all = (await scenario.Triggers.FindManyAsync(new TriggerFilter { TenantAgnostic = true })).ToList();
-        Assert.Equal(3, all.Count);
-        Assert.Contains(all, x => x.Id == "id-b");
+        await Assert.That(all.Count).IsEqualTo(3);
+        await Assert.That(all).Contains(x => x.Id == "id-b");
 
-        Assert.Null(await scenario.Triggers.FindAsync(new TriggerFilter { Id = "id-b" }));
+        await Assert.That(await scenario.Triggers.FindAsync(new TriggerFilter { Id = "id-b" })).IsNull();
 
         var deleted = await scenario.Triggers.DeleteManyAsync(new TriggerFilter());
         var remaining = (await scenario.Triggers.FindManyAsync(new TriggerFilter { TenantAgnostic = true })).ToList();
-        Assert.Equal(2, deleted);
-        Assert.Equal("id-b", Assert.Single(remaining).Id);
+        await Assert.That(deleted).IsEqualTo(2);
+        await Assert.That((await Assert.That(remaining).HasSingleItem()).Id).IsEqualTo("id-b");
 
         using (scenario.UseTenant(Tenant.DefaultTenantId))
         {
@@ -86,18 +86,18 @@ public abstract class WorkflowStoreConformanceTests
             await scenario.Triggers.SaveAsync(Trigger("id-named", hash: "hash-named", tenantId: "tenant-a"));
 
             var defaultVisible = (await scenario.Triggers.FindManyAsync(new TriggerFilter())).ToList();
-            Assert.Contains(defaultVisible, x => x.Id == "id-null");
-            Assert.DoesNotContain(defaultVisible, x => x.Id == "id-named");
+            await Assert.That(defaultVisible).Contains(x => x.Id == "id-null");
+            await Assert.That(defaultVisible).DoesNotContain(x => x.Id == "id-named");
         }
 
         using (scenario.UseTenant("tenant-a"))
         {
             var namedVisible = (await scenario.Triggers.FindManyAsync(new TriggerFilter { Hash = "hash-null" })).ToList();
-            Assert.Empty(namedVisible);
+            await Assert.That(namedVisible).IsEmpty();
         }
     }
 
-    [Fact]
+    [Test]
     public async Task DefinitionVersionsAreUniquePerDefinitionId()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -112,21 +112,21 @@ public abstract class WorkflowStoreConformanceTests
             VersionOptions = VersionOptions.SpecificVersion(1),
             TenantAgnostic = true
         })).ToList();
-        Assert.Equal("def-v1", Assert.Single(afterConflict).Id);
+        await Assert.That((await Assert.That(afterConflict).HasSingleItem()).Id).IsEqualTo("def-v1");
 
         first.Name = "Order Updated";
         await scenario.Definitions.SaveAsync(first);
         var updated = await scenario.Definitions.FindAsync(new WorkflowDefinitionFilter { Id = "def-v1" });
-        Assert.Equal("Order Updated", updated!.Name);
+        await Assert.That(updated!.Name).IsEqualTo("Order Updated");
 
         await scenario.Definitions.SaveAsync(Definition("def-v2", "order", "tenant-a", version: 2));
         var versions = (await scenario.Definitions.FindManyAsync(new WorkflowDefinitionFilter { DefinitionId = "order", TenantAgnostic = true })).ToList();
-        Assert.Equal(2, versions.Count);
-        Assert.Contains(versions, x => x.Id == "def-v1" && x.Version == 1);
-        Assert.Contains(versions, x => x.Id == "def-v2" && x.Version == 2);
+        await Assert.That(versions.Count).IsEqualTo(2);
+        await Assert.That(versions).Contains(x => x.Id == "def-v1" && x.Version == 1);
+        await Assert.That(versions).Contains(x => x.Id == "def-v2" && x.Version == 2);
     }
 
-    [Fact]
+    [Test]
     public async Task DefinitionSaveManyRejectsDuplicateVersionKeysInTheBatch()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -143,34 +143,34 @@ public abstract class WorkflowStoreConformanceTests
             DefinitionId = "invoice",
             TenantAgnostic = true
         })).ToList();
-        Assert.Empty(invoices);
-        Assert.NotNull(await scenario.Definitions.FindAsync(new WorkflowDefinitionFilter { Id = "def-kept", TenantAgnostic = true }));
+        await Assert.That(invoices).IsEmpty();
+        await Assert.That(await scenario.Definitions.FindAsync(new WorkflowDefinitionFilter { Id = "def-kept", TenantAgnostic = true })).IsNotNull();
     }
 
-    [Fact]
+    [Test]
     public async Task DefinitionTenantIsolationHonorsAmbientTenantAndTenantAgnostic()
     {
         await using var scenario = await CreateScenarioAsync();
         await SeedMixedDefinitionsAsync(scenario);
 
         var visible = (await scenario.Definitions.FindManyAsync(new WorkflowDefinitionFilter())).ToList();
-        Assert.Equal(2, visible.Count);
-        Assert.Contains(visible, x => x.Id == "def-a");
-        Assert.Contains(visible, x => x.Id == "def-star");
-        Assert.DoesNotContain(visible, x => x.Id == "def-b");
+        await Assert.That(visible.Count).IsEqualTo(2);
+        await Assert.That(visible).Contains(x => x.Id == "def-a");
+        await Assert.That(visible).Contains(x => x.Id == "def-star");
+        await Assert.That(visible).DoesNotContain(x => x.Id == "def-b");
 
         var all = (await scenario.Definitions.FindManyAsync(new WorkflowDefinitionFilter { TenantAgnostic = true })).ToList();
-        Assert.Equal(3, all.Count);
-        Assert.Contains(all, x => x.Id == "def-b");
+        await Assert.That(all.Count).IsEqualTo(3);
+        await Assert.That(all).Contains(x => x.Id == "def-b");
 
-        Assert.Null(await scenario.Definitions.FindAsync(new WorkflowDefinitionFilter { Id = "def-b" }));
-        Assert.False(await scenario.Definitions.AnyAsync(new WorkflowDefinitionFilter { Id = "def-b" }));
-        Assert.Equal(2, await scenario.Definitions.CountDistinctAsync());
+        await Assert.That(await scenario.Definitions.FindAsync(new WorkflowDefinitionFilter { Id = "def-b" })).IsNull();
+        await Assert.That(await scenario.Definitions.AnyAsync(new WorkflowDefinitionFilter { Id = "def-b" })).IsFalse();
+        await Assert.That(await scenario.Definitions.CountDistinctAsync()).IsEqualTo(2);
 
         var deleted = await scenario.Definitions.DeleteAsync(new WorkflowDefinitionFilter());
         var remaining = (await scenario.Definitions.FindManyAsync(new WorkflowDefinitionFilter { TenantAgnostic = true })).ToList();
-        Assert.Equal(2, deleted);
-        Assert.Equal("def-b", Assert.Single(remaining).Id);
+        await Assert.That(deleted).IsEqualTo(2);
+        await Assert.That((await Assert.That(remaining).HasSingleItem()).Id).IsEqualTo("def-b");
 
         using (scenario.UseTenant(Tenant.DefaultTenantId))
         {
@@ -178,33 +178,33 @@ public abstract class WorkflowStoreConformanceTests
             await scenario.Definitions.SaveAsync(Definition("def-named", "Named", "tenant-a"));
 
             var defaultVisible = (await scenario.Definitions.FindManyAsync(new WorkflowDefinitionFilter())).ToList();
-            Assert.Contains(defaultVisible, x => x.Id == "def-null");
-            Assert.DoesNotContain(defaultVisible, x => x.Id == "def-named");
+            await Assert.That(defaultVisible).Contains(x => x.Id == "def-null");
+            await Assert.That(defaultVisible).DoesNotContain(x => x.Id == "def-named");
         }
     }
 
-    [Fact]
+    [Test]
     public async Task BookmarkTenantIsolationHonorsAmbientTenantAndTenantAgnostic()
     {
         await using var scenario = await CreateScenarioAsync();
         await SeedMixedBookmarksAsync(scenario);
 
         var visible = (await scenario.Bookmarks.FindManyAsync(new BookmarkFilter())).ToList();
-        Assert.Equal(2, visible.Count);
-        Assert.Contains(visible, x => x.Id == "bm-a");
-        Assert.Contains(visible, x => x.Id == "bm-star");
-        Assert.DoesNotContain(visible, x => x.Id == "bm-b");
+        await Assert.That(visible.Count).IsEqualTo(2);
+        await Assert.That(visible).Contains(x => x.Id == "bm-a");
+        await Assert.That(visible).Contains(x => x.Id == "bm-star");
+        await Assert.That(visible).DoesNotContain(x => x.Id == "bm-b");
 
         var all = (await scenario.Bookmarks.FindManyAsync(new BookmarkFilter { TenantAgnostic = true })).ToList();
-        Assert.Equal(3, all.Count);
-        Assert.Contains(all, x => x.Id == "bm-b");
+        await Assert.That(all.Count).IsEqualTo(3);
+        await Assert.That(all).Contains(x => x.Id == "bm-b");
 
-        Assert.Null(await scenario.Bookmarks.FindAsync(new BookmarkFilter { BookmarkId = "bm-b" }));
+        await Assert.That(await scenario.Bookmarks.FindAsync(new BookmarkFilter { BookmarkId = "bm-b" })).IsNull();
 
         var deleted = await scenario.Bookmarks.DeleteAsync(new BookmarkFilter());
         var remaining = (await scenario.Bookmarks.FindManyAsync(new BookmarkFilter { TenantAgnostic = true })).ToList();
-        Assert.Equal(2, deleted);
-        Assert.Equal("bm-b", Assert.Single(remaining).Id);
+        await Assert.That(deleted).IsEqualTo(2);
+        await Assert.That((await Assert.That(remaining).HasSingleItem()).Id).IsEqualTo("bm-b");
 
         using (scenario.UseTenant(Tenant.DefaultTenantId))
         {
@@ -212,12 +212,12 @@ public abstract class WorkflowStoreConformanceTests
             await scenario.Bookmarks.SaveAsync(Bookmark("bm-named", tenantId: "tenant-a"));
 
             var defaultVisible = (await scenario.Bookmarks.FindManyAsync(new BookmarkFilter())).ToList();
-            Assert.Contains(defaultVisible, x => x.Id == "bm-null");
-            Assert.DoesNotContain(defaultVisible, x => x.Id == "bm-named");
+            await Assert.That(defaultVisible).Contains(x => x.Id == "bm-null");
+            await Assert.That(defaultVisible).DoesNotContain(x => x.Id == "bm-named");
         }
     }
 
-    [Fact]
+    [Test]
     public async Task DeadLetterOriginalQueueItemIdIsUniqueAndAddOrGetIsIdempotent()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -227,21 +227,21 @@ public abstract class WorkflowStoreConformanceTests
         await scenario.AssertUniquenessConflictAsync(() => scenario.DeadLetters.SaveAsync(DeadLetter("dl-2", "queue-1")));
 
         var afterConflict = (await scenario.DeadLetters.FindManyAsync(new BookmarkQueueDeadLetterFilter { OriginalQueueItemId = "queue-1" })).ToList();
-        Assert.Equal("dl-1", Assert.Single(afterConflict).Id);
+        await Assert.That((await Assert.That(afterConflict).HasSingleItem()).Id).IsEqualTo("dl-1");
 
         var existing = await scenario.DeadLetters.AddOrGetExistingAsync(DeadLetter("dl-3", "queue-1"));
-        Assert.Equal("dl-1", existing.Id);
+        await Assert.That(existing.Id).IsEqualTo("dl-1");
 
         var created = await scenario.DeadLetters.AddOrGetExistingAsync(DeadLetter("dl-4", "queue-2"));
-        Assert.Equal("dl-4", created.Id);
+        await Assert.That(created.Id).IsEqualTo("dl-4");
 
         var all = (await scenario.DeadLetters.FindManyAsync(new BookmarkQueueDeadLetterFilter())).ToList();
-        Assert.Equal(2, all.Count);
-        Assert.Contains(all, x => x.Id == "dl-1");
-        Assert.Contains(all, x => x.Id == "dl-4");
+        await Assert.That(all.Count).IsEqualTo(2);
+        await Assert.That(all).Contains(x => x.Id == "dl-1");
+        await Assert.That(all).Contains(x => x.Id == "dl-4");
     }
 
-    [Fact]
+    [Test]
     public async Task BookmarkActivityExecutionAndExecutionLogFindsHonorFiltersAndIdUpsert()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -250,70 +250,70 @@ public abstract class WorkflowStoreConformanceTests
         await scenario.Bookmarks.SaveAsync(Bookmark("bm-2", hash: "hash-timer", workflowInstanceId: "instance-1"));
         await scenario.Bookmarks.SaveAsync(Bookmark("bm-3", hash: "hash-http", workflowInstanceId: "instance-2"));
 
-        Assert.Equal("bm-1", (await scenario.Bookmarks.FindAsync(new BookmarkFilter { BookmarkId = "bm-1" }))!.Id);
-        Assert.Equal("bm-2", (await scenario.Bookmarks.FindAsync(new BookmarkFilter { Hash = "hash-timer" }))!.Id);
-        Assert.Null(await scenario.Bookmarks.FindAsync(new BookmarkFilter { BookmarkId = "missing" }));
+        await Assert.That((await scenario.Bookmarks.FindAsync(new BookmarkFilter { BookmarkId = "bm-1" }))!.Id).IsEqualTo("bm-1");
+        await Assert.That((await scenario.Bookmarks.FindAsync(new BookmarkFilter { Hash = "hash-timer" }))!.Id).IsEqualTo("bm-2");
+        await Assert.That(await scenario.Bookmarks.FindAsync(new BookmarkFilter { BookmarkId = "missing" })).IsNull();
 
         var instanceBookmarks = (await scenario.Bookmarks.FindManyAsync(new BookmarkFilter { WorkflowInstanceId = "instance-1" })).ToList();
-        Assert.Equal(2, instanceBookmarks.Count);
-        Assert.Contains(instanceBookmarks, x => x.Id == "bm-1");
-        Assert.Contains(instanceBookmarks, x => x.Id == "bm-2");
+        await Assert.That(instanceBookmarks.Count).IsEqualTo(2);
+        await Assert.That(instanceBookmarks).Contains(x => x.Id == "bm-1");
+        await Assert.That(instanceBookmarks).Contains(x => x.Id == "bm-2");
 
         var hashed = (await scenario.Bookmarks.FindManyAsync(new BookmarkFilter { Hash = "hash-http" })).ToList();
-        Assert.Equal(2, hashed.Count);
+        await Assert.That(hashed.Count).IsEqualTo(2);
 
         var firstPage = await scenario.Bookmarks.FindManyAsync(new BookmarkFilter { WorkflowInstanceId = "instance-1" }, PageArgs.FromRange(0, 1));
-        Assert.Equal(2, firstPage.TotalCount);
-        Assert.Single(firstPage.Items);
+        await Assert.That(firstPage.TotalCount).IsEqualTo(2);
+        await Assert.That(firstPage.Items).HasSingleItem();
 
         await scenario.Bookmarks.SaveAsync(Bookmark("bm-1", hash: "hash-updated", workflowInstanceId: "instance-1"));
-        Assert.Equal("hash-updated", (await scenario.Bookmarks.FindAsync(new BookmarkFilter { BookmarkId = "bm-1" }))!.Hash);
+        await Assert.That((await scenario.Bookmarks.FindAsync(new BookmarkFilter { BookmarkId = "bm-1" }))!.Hash).IsEqualTo("hash-updated");
 
         await scenario.ActivityExecutions.SaveAsync(ActivityExecution("ae-1", "instance-1", "activity-a", ActivityStatus.Running));
         await scenario.ActivityExecutions.SaveAsync(ActivityExecution("ae-2", "instance-1", "activity-b", ActivityStatus.Completed, completedAt: StartedAt.AddMinutes(1)));
         await scenario.ActivityExecutions.SaveAsync(ActivityExecution("ae-3", "instance-2", "activity-a", ActivityStatus.Running));
 
-        Assert.Equal("ae-1", (await scenario.ActivityExecutions.FindAsync(new ActivityExecutionRecordFilter { Id = "ae-1" }))!.Id);
-        Assert.Null(await scenario.ActivityExecutions.FindAsync(new ActivityExecutionRecordFilter { Id = "missing" }));
+        await Assert.That((await scenario.ActivityExecutions.FindAsync(new ActivityExecutionRecordFilter { Id = "ae-1" }))!.Id).IsEqualTo("ae-1");
+        await Assert.That(await scenario.ActivityExecutions.FindAsync(new ActivityExecutionRecordFilter { Id = "missing" })).IsNull();
 
         var instanceActivities = (await scenario.ActivityExecutions.FindManyAsync(new ActivityExecutionRecordFilter { WorkflowInstanceId = "instance-1" })).ToList();
-        Assert.Equal(2, instanceActivities.Count);
-        Assert.Equal(2, await scenario.ActivityExecutions.CountAsync(new ActivityExecutionRecordFilter { WorkflowInstanceId = "instance-1" }));
-        Assert.Equal("ae-1", Assert.Single(await scenario.ActivityExecutions.FindManyAsync(new ActivityExecutionRecordFilter { ActivityId = "activity-a", WorkflowInstanceId = "instance-1" })).Id);
-        Assert.Equal("ae-2", Assert.Single(await scenario.ActivityExecutions.FindManyAsync(new ActivityExecutionRecordFilter { Status = ActivityStatus.Completed })).Id);
+        await Assert.That(instanceActivities.Count).IsEqualTo(2);
+        await Assert.That(await scenario.ActivityExecutions.CountAsync(new ActivityExecutionRecordFilter { WorkflowInstanceId = "instance-1" })).IsEqualTo(2);
+        await Assert.That((await Assert.That(await scenario.ActivityExecutions.FindManyAsync(new ActivityExecutionRecordFilter { ActivityId = "activity-a", WorkflowInstanceId = "instance-1" })).HasSingleItem()).Id).IsEqualTo("ae-1");
+        await Assert.That((await Assert.That(await scenario.ActivityExecutions.FindManyAsync(new ActivityExecutionRecordFilter { Status = ActivityStatus.Completed })).HasSingleItem()).Id).IsEqualTo("ae-2");
 
         await scenario.ActivityExecutions.SaveAsync(ActivityExecution("ae-1", "instance-1", "activity-a", ActivityStatus.Completed, completedAt: StartedAt.AddMinutes(2)));
-        Assert.Equal(ActivityStatus.Completed, (await scenario.ActivityExecutions.FindAsync(new ActivityExecutionRecordFilter { Id = "ae-1" }))!.Status);
+        await Assert.That((await scenario.ActivityExecutions.FindAsync(new ActivityExecutionRecordFilter { Id = "ae-1" }))!.Status).IsEqualTo(ActivityStatus.Completed);
 
-        Assert.Equal(2, await scenario.ActivityExecutions.DeleteManyAsync(new ActivityExecutionRecordFilter { WorkflowInstanceId = "instance-1" }));
-        Assert.Equal("ae-3", Assert.Single(await scenario.ActivityExecutions.FindManyAsync(new ActivityExecutionRecordFilter())).Id);
+        await Assert.That(await scenario.ActivityExecutions.DeleteManyAsync(new ActivityExecutionRecordFilter { WorkflowInstanceId = "instance-1" })).IsEqualTo(2);
+        await Assert.That((await Assert.That(await scenario.ActivityExecutions.FindManyAsync(new ActivityExecutionRecordFilter())).HasSingleItem()).Id).IsEqualTo("ae-3");
 
         await scenario.ExecutionLogs.SaveAsync(ExecutionLog("el-1", "instance-1", "activity-a", "Started"));
         await scenario.ExecutionLogs.SaveAsync(ExecutionLog("el-2", "instance-1", "activity-b", "Completed", activityType: "Elsa.Delay"));
         await scenario.ExecutionLogs.SaveAsync(ExecutionLog("el-3", "instance-2", "activity-a", "Started"));
 
-        Assert.Equal("el-1", (await scenario.ExecutionLogs.FindAsync(new WorkflowExecutionLogRecordFilter { Id = "el-1" }))!.Id);
-        Assert.Null(await scenario.ExecutionLogs.FindAsync(new WorkflowExecutionLogRecordFilter { Id = "missing" }));
+        await Assert.That((await scenario.ExecutionLogs.FindAsync(new WorkflowExecutionLogRecordFilter { Id = "el-1" }))!.Id).IsEqualTo("el-1");
+        await Assert.That(await scenario.ExecutionLogs.FindAsync(new WorkflowExecutionLogRecordFilter { Id = "missing" })).IsNull();
 
         var instanceLogs = await scenario.ExecutionLogs.FindManyAsync(new WorkflowExecutionLogRecordFilter { WorkflowInstanceId = "instance-1" }, PageArgs.FromRange(0, 10));
-        Assert.Equal(2, instanceLogs.TotalCount);
-        Assert.Equal(2, instanceLogs.Items.Count);
+        await Assert.That(instanceLogs.TotalCount).IsEqualTo(2);
+        await Assert.That(instanceLogs.Items.Count).IsEqualTo(2);
 
         var firstLogPage = await scenario.ExecutionLogs.FindManyAsync(new WorkflowExecutionLogRecordFilter { WorkflowInstanceId = "instance-1" }, PageArgs.FromRange(0, 1));
-        Assert.Equal(2, firstLogPage.TotalCount);
-        Assert.Single(firstLogPage.Items);
+        await Assert.That(firstLogPage.TotalCount).IsEqualTo(2);
+        await Assert.That(firstLogPage.Items).HasSingleItem();
 
-        Assert.Equal("el-2", (await scenario.ExecutionLogs.FindAsync(new WorkflowExecutionLogRecordFilter { EventName = "Completed" }))!.Id);
-        Assert.Equal("el-2", Assert.Single((await scenario.ExecutionLogs.FindManyAsync(new WorkflowExecutionLogRecordFilter { ActivityId = "activity-b" }, PageArgs.All)).Items).Id);
+        await Assert.That((await scenario.ExecutionLogs.FindAsync(new WorkflowExecutionLogRecordFilter { EventName = "Completed" }))!.Id).IsEqualTo("el-2");
+        await Assert.That((await Assert.That((await scenario.ExecutionLogs.FindManyAsync(new WorkflowExecutionLogRecordFilter { ActivityId = "activity-b" }, PageArgs.All)).Items).HasSingleItem()).Id).IsEqualTo("el-2");
 
         var excluded = await scenario.ExecutionLogs.FindManyAsync(new WorkflowExecutionLogRecordFilter { WorkflowInstanceId = "instance-1", ExcludeActivityType = "Elsa.WriteLine" }, PageArgs.All);
-        Assert.Equal("el-2", Assert.Single(excluded.Items).Id);
+        await Assert.That((await Assert.That(excluded.Items).HasSingleItem()).Id).IsEqualTo("el-2");
 
         await scenario.ExecutionLogs.SaveAsync(ExecutionLog("el-1", "instance-1", "activity-a", "Resumed"));
-        Assert.Equal("Resumed", (await scenario.ExecutionLogs.FindAsync(new WorkflowExecutionLogRecordFilter { Id = "el-1" }))!.EventName);
+        await Assert.That((await scenario.ExecutionLogs.FindAsync(new WorkflowExecutionLogRecordFilter { Id = "el-1" }))!.EventName).IsEqualTo("Resumed");
 
-        Assert.Equal(2, await scenario.ExecutionLogs.DeleteManyAsync(new WorkflowExecutionLogRecordFilter { WorkflowInstanceId = "instance-1" }));
-        Assert.Equal("el-3", Assert.Single((await scenario.ExecutionLogs.FindManyAsync(new WorkflowExecutionLogRecordFilter(), PageArgs.All)).Items).Id);
+        await Assert.That(await scenario.ExecutionLogs.DeleteManyAsync(new WorkflowExecutionLogRecordFilter { WorkflowInstanceId = "instance-1" })).IsEqualTo(2);
+        await Assert.That((await Assert.That((await scenario.ExecutionLogs.FindManyAsync(new WorkflowExecutionLogRecordFilter(), PageArgs.All)).Items).HasSingleItem()).Id).IsEqualTo("el-3");
     }
 
     private static async Task SeedMixedTriggersAsync(WorkflowStoreScenario scenario)
@@ -443,25 +443,13 @@ public abstract class WorkflowStoreConformanceTests
         };
 }
 
-[CollectionDefinition(Name)]
-public sealed class WorkflowStoreInMemoryConformanceCollection
-{
-    public const string Name = "WorkflowStores:InMemory";
-}
-
-[CollectionDefinition(Name)]
-public sealed class WorkflowStoreSqliteConformanceCollection
-{
-    public const string Name = "WorkflowStores:EFCore.Sqlite";
-}
-
-[Collection(WorkflowStoreInMemoryConformanceCollection.Name)]
+[InheritsTests]
 public sealed class InMemoryWorkflowStoreConformanceTests : WorkflowStoreConformanceTests
 {
     protected override Task<WorkflowStoreScenario> CreateScenarioAsync() => WorkflowStoreScenario.CreateInMemoryAsync();
 }
 
-[Collection(WorkflowStoreSqliteConformanceCollection.Name)]
+[InheritsTests]
 public sealed class SqliteWorkflowStoreConformanceTests : WorkflowStoreConformanceTests
 {
     protected override Task<WorkflowStoreScenario> CreateScenarioAsync() => WorkflowStoreScenario.CreateSqliteAsync();

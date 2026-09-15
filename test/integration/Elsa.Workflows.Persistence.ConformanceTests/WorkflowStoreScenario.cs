@@ -67,7 +67,7 @@ public sealed class WorkflowStoreScenario(
             new MemoryBookmarkQueueDeadLetterStore(new MemoryStore<BookmarkQueueDeadLetterItem>()),
             new MemoryActivityExecutionStore(new MemoryStore<ActivityExecutionRecord>()),
             new MemoryWorkflowExecutionLogStore(new MemoryStore<WorkflowExecutionLogRecord>()),
-            operation => Assert.ThrowsAsync<InvalidOperationException>(operation),
+            async operation => { await Assert.ThrowsExactlyAsync<InvalidOperationException>(operation); },
             () => ValueTask.CompletedTask));
     }
 
@@ -152,16 +152,29 @@ public sealed class WorkflowStoreScenario(
 
     private static async Task AssertSqliteUniquenessConflictAsync(Func<Task> operation)
     {
-        var exception = await Record.ExceptionAsync(operation);
+        var exception = await CaptureExceptionAsync(operation);
         var sqliteException = exception switch
         {
             DbUpdateException { InnerException: SqliteException inner } => inner,
             SqliteException direct => direct,
-            _ => throw new Xunit.Sdk.XunitException($"Expected a SQLite uniqueness violation, received {exception?.GetType().FullName ?? "no exception"}.")
+            _ => throw new TUnit.Assertions.Exceptions.AssertionException($"Expected a SQLite uniqueness violation, received {exception?.GetType().FullName ?? "no exception"}.")
         };
 
-        Assert.Equal(19, sqliteException.SqliteErrorCode);
-        Assert.Contains("UNIQUE constraint failed", sqliteException.Message, StringComparison.Ordinal);
+        await Assert.That(sqliteException.SqliteErrorCode).IsEqualTo(19);
+        await Assert.That(sqliteException.Message).Contains("UNIQUE constraint failed").WithComparison(StringComparison.Ordinal);
+    }
+
+    private static async Task<Exception?> CaptureExceptionAsync(Func<Task> operation)
+    {
+        try
+        {
+            await operation();
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
     }
 
     private sealed class ConformancePayloadSerializer : IPayloadSerializer

@@ -1,5 +1,6 @@
 using Elsa.Common.Multitenancy;
 using Elsa.Secrets.Models;
+using System.Threading.Tasks;
 
 namespace Elsa.Secrets.UnitTests;
 
@@ -12,7 +13,7 @@ public abstract class SecretRepositoryConformanceTests
 {
     protected abstract Task<SecretRepositoryScenario> CreateScenarioAsync();
 
-    [Fact]
+    [Test]
     public async Task TwoTenantsCanOwnTheSameSecretName()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -22,9 +23,9 @@ public abstract class SecretRepositoryConformanceTests
             var secretA = CreateSecret("SMTP:PASSWORD", "Tenant A");
             await scenario.Repository.AddAsync(secretA);
 
-            Assert.Equal("tenant-a", secretA.TenantId);
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                scenario.Repository.AddAsync(CreateSecret("smtp:password", "Duplicate A")));
+            await Assert.That(secretA.TenantId).IsEqualTo("tenant-a");
+            await Assert.That(() => scenario.Repository.AddAsync(CreateSecret("smtp:password", "Duplicate A")))
+                .ThrowsExactly<InvalidOperationException>();
         }
 
         using (scenario.UseTenant("tenant-b"))
@@ -32,15 +33,15 @@ public abstract class SecretRepositoryConformanceTests
             var secretB = CreateSecret("smtp:password", "Tenant B");
             await scenario.Repository.AddAsync(secretB);
 
-            Assert.Equal("tenant-b", secretB.TenantId);
-            Assert.Equal("Tenant B", (await scenario.Repository.GetAsync("SMTP:PASSWORD"))!.DisplayName);
+            await Assert.That(secretB.TenantId).IsEqualTo("tenant-b");
+            await Assert.That((await scenario.Repository.GetAsync("SMTP:PASSWORD"))!.DisplayName).IsEqualTo("Tenant B");
         }
 
         using (scenario.UseTenant("tenant-a"))
-            Assert.Equal("Tenant A", (await scenario.Repository.GetAsync("smtp:password"))!.DisplayName);
+            await Assert.That((await scenario.Repository.GetAsync("smtp:password"))!.DisplayName).IsEqualTo("Tenant A");
     }
 
-    [Fact]
+    [Test]
     public async Task GetDoesNotCrossReadAnotherTenant()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -50,20 +51,20 @@ public abstract class SecretRepositoryConformanceTests
 
         using (scenario.UseTenant("tenant-b"))
         {
-            Assert.Null(await scenario.Repository.GetAsync("smtp:password"));
+            await Assert.That(await scenario.Repository.GetAsync("smtp:password")).IsNull();
             await scenario.Repository.AddAsync(CreateSecret("smtp:password", "Tenant B"));
         }
 
         using (scenario.UseTenant("tenant-a"))
         {
             var loaded = await scenario.Repository.GetAsync("SMTP:PASSWORD");
-            Assert.NotNull(loaded);
-            Assert.Equal("Tenant A", loaded.DisplayName);
-            Assert.Equal("tenant-a", loaded.TenantId);
+            var existing = await Assert.That(loaded).IsNotNull();
+            await Assert.That(existing.DisplayName).IsEqualTo("Tenant A");
+            await Assert.That(existing.TenantId).IsEqualTo("tenant-a");
         }
     }
 
-    [Fact]
+    [Test]
     public async Task ListIsTenantScoped()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -78,18 +79,20 @@ public abstract class SecretRepositoryConformanceTests
         {
             await scenario.Repository.AddAsync(CreateSecret("smtp:password", "Tenant B"));
             var listedB = await scenario.Repository.ListAsync();
-            Assert.Equal("Tenant B", Assert.Single(listedB).DisplayName);
+            var onlySecret = await Assert.That(listedB).HasSingleItem();
+            await Assert.That(onlySecret.DisplayName).IsEqualTo("Tenant B");
         }
 
         using (scenario.UseTenant("tenant-a"))
         {
             var listedA = (await scenario.Repository.ListAsync()).OrderBy(x => x.Name).ToList();
-            Assert.Equal(["api:key", "smtp:password"], listedA.Select(x => x.Name).ToList());
-            Assert.All(listedA, secret => Assert.Equal("tenant-a", secret.TenantId));
+            await Assert.That(listedA.Select(x => x.Name).ToList()).IsEquivalentTo(["api:key", "smtp:password"], TUnit.Assertions.Enums.CollectionOrdering.Matching);
+            foreach (var secret in listedA)
+                await Assert.That(secret.TenantId).IsEqualTo("tenant-a");
         }
     }
 
-    [Fact]
+    [Test]
     public async Task DeletedReplaceStaysPerTenant()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -97,21 +100,21 @@ public abstract class SecretRepositoryConformanceTests
         using (scenario.UseTenant("tenant-a"))
         {
             await scenario.Repository.SaveAsync(CreateSecret("smtp:password", "Deleted A", SecretStatus.Deleted));
-            Assert.True(await scenario.Repository.TryAddOrReplaceDeletedAsync(CreateSecret("SMTP:PASSWORD", "Replacement A")));
-            Assert.Equal("Replacement A", (await scenario.Repository.GetAsync("smtp:password"))!.DisplayName);
+            await Assert.That(await scenario.Repository.TryAddOrReplaceDeletedAsync(CreateSecret("SMTP:PASSWORD", "Replacement A"))).IsTrue();
+            await Assert.That((await scenario.Repository.GetAsync("smtp:password"))!.DisplayName).IsEqualTo("Replacement A");
         }
 
         using (scenario.UseTenant("tenant-b"))
         {
-            Assert.True(await scenario.Repository.TryAddOrReplaceDeletedAsync(CreateSecret("smtp:password", "Tenant B")));
-            Assert.Equal("Tenant B", (await scenario.Repository.GetAsync("smtp:password"))!.DisplayName);
+            await Assert.That(await scenario.Repository.TryAddOrReplaceDeletedAsync(CreateSecret("smtp:password", "Tenant B"))).IsTrue();
+            await Assert.That((await scenario.Repository.GetAsync("smtp:password"))!.DisplayName).IsEqualTo("Tenant B");
         }
 
         using (scenario.UseTenant("tenant-a"))
-            Assert.Equal("Replacement A", (await scenario.Repository.GetAsync("smtp:password"))!.DisplayName);
+            await Assert.That((await scenario.Repository.GetAsync("smtp:password"))!.DisplayName).IsEqualTo("Replacement A");
     }
 
-    [Fact]
+    [Test]
     public async Task DefaultTenantRejectsDuplicateNames()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -120,10 +123,10 @@ public abstract class SecretRepositoryConformanceTests
         {
             var secret = CreateSecret("smtp:password", "Default");
             await scenario.Repository.AddAsync(secret);
-            Assert.Equal(Tenant.DefaultTenantId, secret.TenantId);
+            await Assert.That(secret.TenantId).IsEqualTo(Tenant.DefaultTenantId);
 
-            await Assert.ThrowsAsync<InvalidOperationException>(() =>
-                scenario.Repository.AddAsync(CreateSecret("SMTP:PASSWORD", "Duplicate")));
+            await Assert.That(() => scenario.Repository.AddAsync(CreateSecret("SMTP:PASSWORD", "Duplicate")))
+                .ThrowsExactly<InvalidOperationException>();
         }
     }
 
@@ -136,18 +139,21 @@ public abstract class SecretRepositoryConformanceTests
         };
 }
 
+[InheritsTests]
 public sealed class InMemorySecretRepositoryConformanceTests : SecretRepositoryConformanceTests
 {
     protected override Task<SecretRepositoryScenario> CreateScenarioAsync() =>
         SecretRepositoryScenario.CreateInMemoryAsync();
 }
 
+[InheritsTests]
 public sealed class FileSecretRepositoryConformanceTests : SecretRepositoryConformanceTests
 {
     protected override Task<SecretRepositoryScenario> CreateScenarioAsync() =>
         SecretRepositoryScenario.CreateFileAsync();
 }
 
+[InheritsTests]
 public sealed class SqliteSecretRepositoryConformanceTests : SecretRepositoryConformanceTests
 {
     protected override Task<SecretRepositoryScenario> CreateScenarioAsync() =>

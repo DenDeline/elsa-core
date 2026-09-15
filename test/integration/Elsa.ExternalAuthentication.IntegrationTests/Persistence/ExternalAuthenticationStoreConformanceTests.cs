@@ -31,7 +31,7 @@ public abstract class ExternalAuthenticationStoreConformanceTests
 
     protected abstract Task<ExternalAuthenticationStoreScenario> CreateScenarioAsync();
 
-    [Fact]
+    [Test]
     public async Task RefreshTokenHashesAreGloballyUniqueAndFailedWritesDoNotMutateState()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -41,8 +41,8 @@ public abstract class ExternalAuthenticationStoreConformanceTests
         await scenario.SessionStore.SaveAsync(first);
         await scenario.AssertRefreshTokenConflictAsync(() => scenario.SessionStore.SaveAsync(second).AsTask());
 
-        Assert.Null(await scenario.SessionStore.FindByIdAsync(second.Id));
-        Assert.Equal(first.Id, (await scenario.SessionStore.FindByRefreshTokenHashAsync(first.CurrentRefreshTokenHash!))!.Id);
+        await Assert.That(await scenario.SessionStore.FindByIdAsync(second.Id)).IsNull();
+        await Assert.That((await scenario.SessionStore.FindByRefreshTokenHashAsync(first.CurrentRefreshTokenHash!))!.Id).IsEqualTo(first.Id);
 
         second.CurrentRefreshTokenHash = "refresh-b";
         await scenario.SessionStore.SaveAsync(second);
@@ -50,16 +50,16 @@ public abstract class ExternalAuthenticationStoreConformanceTests
 
         var persistedFirst = await scenario.SessionStore.FindByIdAsync(first.Id);
         var persistedSecond = await scenario.SessionStore.FindByIdAsync(second.Id);
-        Assert.NotNull(persistedFirst);
-        Assert.NotNull(persistedSecond);
-        Assert.Equal("refresh-a", persistedFirst.CurrentRefreshTokenHash);
-        Assert.Equal(0, persistedFirst.RefreshGeneration);
-        Assert.Equal(Now, persistedFirst.LastRefreshedAt);
-        Assert.Equal("refresh-b", persistedSecond.CurrentRefreshTokenHash);
-        Assert.Equal(second.Id, (await scenario.SessionStore.FindByRefreshTokenHashAsync("refresh-b"))!.Id);
+        await Assert.That(persistedFirst).IsNotNull();
+        await Assert.That(persistedSecond).IsNotNull();
+        await Assert.That(persistedFirst.CurrentRefreshTokenHash).IsEqualTo("refresh-a");
+        await Assert.That(persistedFirst.RefreshGeneration).IsEqualTo(0);
+        await Assert.That(persistedFirst.LastRefreshedAt).IsEqualTo(Now);
+        await Assert.That(persistedSecond.CurrentRefreshTokenHash).IsEqualTo("refresh-b");
+        await Assert.That((await scenario.SessionStore.FindByRefreshTokenHashAsync("refresh-b"))!.Id).IsEqualTo(second.Id);
     }
 
-    [Fact]
+    [Test]
     public async Task OneShotStoresTakeOnceAndLeaveExpiredEntriesUnconsumed()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -67,40 +67,40 @@ public abstract class ExternalAuthenticationStoreConformanceTests
 
         var transaction = CreateTransaction("state-hash", expiresAt);
         await scenario.StateStore.PutAsync("ExternalSignIn", transaction.HandleHash, transaction, expiresAt);
-        var stateTaken = Assert.IsType<TakeResult<BrokerTransaction>.Taken>(await scenario.StateStore.TryTakeAsync<BrokerTransaction>("ExternalSignIn", transaction.HandleHash));
-        Assert.Equal(transaction.HandleHash, stateTaken.Value.HandleHash);
-        Assert.IsType<TakeResult<BrokerTransaction>.AlreadyConsumed>(await scenario.StateStore.TryTakeAsync<BrokerTransaction>("ExternalSignIn", transaction.HandleHash));
+        var stateTaken = (await Assert.That(await scenario.StateStore.TryTakeAsync<BrokerTransaction>("ExternalSignIn", transaction.HandleHash)).IsTypeOf<TakeResult<BrokerTransaction>.Taken>());
+        await Assert.That(stateTaken.Value.HandleHash).IsEqualTo(transaction.HandleHash);
+        await Assert.That(await scenario.StateStore.TryTakeAsync<BrokerTransaction>("ExternalSignIn", transaction.HandleHash)).IsTypeOf<TakeResult<BrokerTransaction>.AlreadyConsumed>();
 
         var grant = CreateGrant("grant-hash", expiresAt);
         await scenario.GrantStore.SaveAsync(grant);
-        var grantTaken = Assert.IsType<TakeResult<AuthorizationGrant>.Taken>(await scenario.GrantStore.TryTakeAsync(grant.CodeHash));
-        Assert.Equal(grant.CodeHash, grantTaken.Value.CodeHash);
-        Assert.IsType<TakeResult<AuthorizationGrant>.AlreadyConsumed>(await scenario.GrantStore.TryTakeAsync(grant.CodeHash));
+        var grantTaken = (await Assert.That(await scenario.GrantStore.TryTakeAsync(grant.CodeHash)).IsTypeOf<TakeResult<AuthorizationGrant>.Taken>());
+        await Assert.That(grantTaken.Value.CodeHash).IsEqualTo(grant.CodeHash);
+        await Assert.That(await scenario.GrantStore.TryTakeAsync(grant.CodeHash)).IsTypeOf<TakeResult<AuthorizationGrant>.AlreadyConsumed>();
 
         var preview = CreatePreview("preview-hash", "administrator-a", expiresAt);
         await scenario.PreviewStore.SaveAsync(preview);
-        var previewTaken = Assert.IsType<TakeResult<PreviewResult>.Taken>(await scenario.PreviewStore.TryTakeAsync(preview.HandleHash, preview.AdministratorId));
-        Assert.Equal(preview.HandleHash, previewTaken.Value.HandleHash);
-        Assert.IsType<TakeResult<PreviewResult>.AlreadyConsumed>(await scenario.PreviewStore.TryTakeAsync(preview.HandleHash, preview.AdministratorId));
+        var previewTaken = (await Assert.That(await scenario.PreviewStore.TryTakeAsync(preview.HandleHash, preview.AdministratorId)).IsTypeOf<TakeResult<PreviewResult>.Taken>());
+        await Assert.That(previewTaken.Value.HandleHash).IsEqualTo(preview.HandleHash);
+        await Assert.That(await scenario.PreviewStore.TryTakeAsync(preview.HandleHash, preview.AdministratorId)).IsTypeOf<TakeResult<PreviewResult>.AlreadyConsumed>();
 
         scenario.Clock.UtcNow = expiresAt;
         var expiredTransaction = CreateTransaction("expired-state", expiresAt);
         await scenario.StateStore.PutAsync("ExternalSignIn", expiredTransaction.HandleHash, expiredTransaction, expiresAt);
-        Assert.IsType<TakeResult<BrokerTransaction>.Expired>(await scenario.StateStore.TryTakeAsync<BrokerTransaction>("ExternalSignIn", expiredTransaction.HandleHash));
-        Assert.IsType<TakeResult<BrokerTransaction>.Expired>(await scenario.StateStore.TryTakeAsync<BrokerTransaction>("ExternalSignIn", expiredTransaction.HandleHash));
+        await Assert.That(await scenario.StateStore.TryTakeAsync<BrokerTransaction>("ExternalSignIn", expiredTransaction.HandleHash)).IsTypeOf<TakeResult<BrokerTransaction>.Expired>();
+        await Assert.That(await scenario.StateStore.TryTakeAsync<BrokerTransaction>("ExternalSignIn", expiredTransaction.HandleHash)).IsTypeOf<TakeResult<BrokerTransaction>.Expired>();
 
         var expiredGrant = CreateGrant("expired-grant", expiresAt);
         await scenario.GrantStore.SaveAsync(expiredGrant);
-        Assert.IsType<TakeResult<AuthorizationGrant>.Expired>(await scenario.GrantStore.TryTakeAsync(expiredGrant.CodeHash));
-        Assert.IsType<TakeResult<AuthorizationGrant>.Expired>(await scenario.GrantStore.TryTakeAsync(expiredGrant.CodeHash));
+        await Assert.That(await scenario.GrantStore.TryTakeAsync(expiredGrant.CodeHash)).IsTypeOf<TakeResult<AuthorizationGrant>.Expired>();
+        await Assert.That(await scenario.GrantStore.TryTakeAsync(expiredGrant.CodeHash)).IsTypeOf<TakeResult<AuthorizationGrant>.Expired>();
 
         var expiredPreview = CreatePreview("expired-preview", "administrator-a", expiresAt);
         await scenario.PreviewStore.SaveAsync(expiredPreview);
-        Assert.IsType<TakeResult<PreviewResult>.Expired>(await scenario.PreviewStore.TryTakeAsync(expiredPreview.HandleHash, expiredPreview.AdministratorId));
-        Assert.IsType<TakeResult<PreviewResult>.Expired>(await scenario.PreviewStore.TryTakeAsync(expiredPreview.HandleHash, expiredPreview.AdministratorId));
+        await Assert.That(await scenario.PreviewStore.TryTakeAsync(expiredPreview.HandleHash, expiredPreview.AdministratorId)).IsTypeOf<TakeResult<PreviewResult>.Expired>();
+        await Assert.That(await scenario.PreviewStore.TryTakeAsync(expiredPreview.HandleHash, expiredPreview.AdministratorId)).IsTypeOf<TakeResult<PreviewResult>.Expired>();
     }
 
-    [Fact]
+    [Test]
     public async Task ConcurrentOneShotTakesAllowExactlyOneConsumerPerStore()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -111,44 +111,44 @@ public abstract class ExternalAuthenticationStoreConformanceTests
         var stateResults = await RunConcurrentlyAsync(scenario, ConformanceRacePoint.StateTake,
             () => scenario.StateStore.TryTakeAsync<BrokerTransaction>("ExternalSignIn", transaction.HandleHash),
             () => scenario.StateStore.TryTakeAsync<BrokerTransaction>("ExternalSignIn", transaction.HandleHash));
-        Assert.Single(stateResults.OfType<TakeResult<BrokerTransaction>.Taken>());
-        Assert.Single(stateResults.OfType<TakeResult<BrokerTransaction>.AlreadyConsumed>());
+        await Assert.That(stateResults.OfType<TakeResult<BrokerTransaction>.Taken>()).HasSingleItem();
+        await Assert.That(stateResults.OfType<TakeResult<BrokerTransaction>.AlreadyConsumed>()).HasSingleItem();
 
         var grant = CreateGrant("concurrent-grant", expiresAt);
         await scenario.GrantStore.SaveAsync(grant);
         var grantResults = await RunConcurrentlyAsync(scenario, ConformanceRacePoint.AuthorizationGrantTake,
             () => scenario.GrantStore.TryTakeAsync(grant.CodeHash),
             () => scenario.GrantStore.TryTakeAsync(grant.CodeHash));
-        Assert.Single(grantResults.OfType<TakeResult<AuthorizationGrant>.Taken>());
-        Assert.Single(grantResults.OfType<TakeResult<AuthorizationGrant>.AlreadyConsumed>());
+        await Assert.That(grantResults.OfType<TakeResult<AuthorizationGrant>.Taken>()).HasSingleItem();
+        await Assert.That(grantResults.OfType<TakeResult<AuthorizationGrant>.AlreadyConsumed>()).HasSingleItem();
 
         var preview = CreatePreview("concurrent-preview", "administrator-a", expiresAt);
         await scenario.PreviewStore.SaveAsync(preview);
         var previewResults = await RunConcurrentlyAsync(scenario, ConformanceRacePoint.PreviewTake,
             () => scenario.PreviewStore.TryTakeAsync(preview.HandleHash, preview.AdministratorId),
             () => scenario.PreviewStore.TryTakeAsync(preview.HandleHash, preview.AdministratorId));
-        Assert.Single(previewResults.OfType<TakeResult<PreviewResult>.Taken>());
-        Assert.Single(previewResults.OfType<TakeResult<PreviewResult>.AlreadyConsumed>());
+        await Assert.That(previewResults.OfType<TakeResult<PreviewResult>.Taken>()).HasSingleItem();
+        await Assert.That(previewResults.OfType<TakeResult<PreviewResult>.AlreadyConsumed>()).HasSingleItem();
     }
 
-    [Fact]
+    [Test]
     public async Task ConnectionStoreEnforcesScopedDuplicateKeysAndRevisionCas()
     {
         await using var scenario = await CreateScenarioAsync();
-        var created = Assert.IsType<ConnectionMutationResult.Created>(await scenario.ConnectionStore.CreateAsync(CreateConnection("connection-a", "tenant-a", "contoso")));
-        Assert.Equal(1, created.Connection.Revision);
-        Assert.IsType<ConnectionMutationResult.DuplicateKey>(await scenario.ConnectionStore.CreateAsync(CreateConnection("connection-b", "tenant-a", "contoso")));
-        Assert.IsType<ConnectionMutationResult.Created>(await scenario.ConnectionStore.CreateAsync(CreateConnection("connection-c", "tenant-b", "contoso")));
+        var created = (await Assert.That(await scenario.ConnectionStore.CreateAsync(CreateConnection("connection-a", "tenant-a", "contoso"))).IsTypeOf<ConnectionMutationResult.Created>());
+        await Assert.That(created.Connection.Revision).IsEqualTo(1);
+        await Assert.That(await scenario.ConnectionStore.CreateAsync(CreateConnection("connection-b", "tenant-a", "contoso"))).IsTypeOf<ConnectionMutationResult.DuplicateKey>();
+        await Assert.That(await scenario.ConnectionStore.CreateAsync(CreateConnection("connection-c", "tenant-b", "contoso"))).IsTypeOf<ConnectionMutationResult.Created>();
 
         created.Connection.DisplayName = "Updated";
-        var updated = Assert.IsType<ConnectionMutationResult.Updated>(await scenario.ConnectionStore.UpdateAsync(created.Connection, 1));
-        Assert.Equal(2, updated.Connection.Revision);
-        Assert.Equal("Updated", updated.Connection.DisplayName);
-        var conflict = Assert.IsType<ConnectionMutationResult.RevisionConflict>(await scenario.ConnectionStore.UpdateAsync(created.Connection, 1));
-        Assert.Equal(2, conflict.CurrentRevision);
+        var updated = (await Assert.That(await scenario.ConnectionStore.UpdateAsync(created.Connection, 1)).IsTypeOf<ConnectionMutationResult.Updated>());
+        await Assert.That(updated.Connection.Revision).IsEqualTo(2);
+        await Assert.That(updated.Connection.DisplayName).IsEqualTo("Updated");
+        var conflict = (await Assert.That(await scenario.ConnectionStore.UpdateAsync(created.Connection, 1)).IsTypeOf<ConnectionMutationResult.RevisionConflict>());
+        await Assert.That(conflict.CurrentRevision).IsEqualTo(2);
     }
 
-    [Fact]
+    [Test]
     public async Task IdentityLinksCreateIdempotentlyAndReplaceWithoutViolatingUniqueness()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -157,25 +157,25 @@ public abstract class ExternalAuthenticationStoreConformanceTests
         var created = await scenario.IdentityProvisioner.CreateLinkOrGetExistingAsync(oldRequest);
         var converged = await scenario.IdentityProvisioner.CreateLinkOrGetExistingAsync(oldRequest with { ExistingUserId = "user-b" });
 
-        Assert.True(created.WasLinkCreated);
-        Assert.False(converged.WasLinkCreated);
-        Assert.Equal(created.Link.Id, converged.Link.Id);
-        Assert.Equal("user-a", converged.UserId);
+        await Assert.That(created.WasLinkCreated).IsTrue();
+        await Assert.That(converged.WasLinkCreated).IsFalse();
+        await Assert.That(converged.Link.Id).IsEqualTo(created.Link.Id);
+        await Assert.That(converged.UserId).IsEqualTo("user-a");
 
         var conflicting = await scenario.IdentityProvisioner.CreateLinkOrGetExistingAsync(new ProvisioningRequest("tenant-a", "contoso", Identity("subject-conflict"), null, "user-b"));
-        var conflict = Assert.IsType<ExternalIdentityLinkReplaceResult.Conflict>(await scenario.IdentityProvisioner.ReplaceAsync(new ExternalIdentityLinkReplaceRequest("tenant-a", created.Link.Id, "user-a", "contoso", Identity("subject-conflict"))));
-        Assert.Equal(conflicting.Link.Id, conflict.ConflictingLink.Id);
-        Assert.Equal(created.Link.Id, conflict.OldLink.Id);
-        Assert.Equal(created.Link.Id, (await scenario.IdentityProvisioner.FindLinkAsync("tenant-a", "contoso", oldIdentity))!.Id);
+        var conflict = (await Assert.That(await scenario.IdentityProvisioner.ReplaceAsync(new ExternalIdentityLinkReplaceRequest("tenant-a", created.Link.Id, "user-a", "contoso", Identity("subject-conflict")))).IsTypeOf<ExternalIdentityLinkReplaceResult.Conflict>());
+        await Assert.That(conflict.ConflictingLink.Id).IsEqualTo(conflicting.Link.Id);
+        await Assert.That(conflict.OldLink.Id).IsEqualTo(created.Link.Id);
+        await Assert.That((await scenario.IdentityProvisioner.FindLinkAsync("tenant-a", "contoso", oldIdentity))!.Id).IsEqualTo(created.Link.Id);
 
-        var replaced = Assert.IsType<ExternalIdentityLinkReplaceResult.Success>(await scenario.IdentityProvisioner.ReplaceAsync(new ExternalIdentityLinkReplaceRequest("tenant-a", created.Link.Id, "user-b", "contoso", Identity("subject-new"))));
-        Assert.NotEqual(created.Link.Id, replaced.NewLink.Id);
-        Assert.Equal("user-b", replaced.NewLink.UserId);
-        Assert.Null(await scenario.IdentityProvisioner.FindLinkAsync("tenant-a", "contoso", oldIdentity));
-        Assert.Equal(replaced.NewLink.Id, (await scenario.IdentityProvisioner.FindLinkAsync("tenant-a", "contoso", Identity("subject-new")))!.Id);
+        var replaced = (await Assert.That(await scenario.IdentityProvisioner.ReplaceAsync(new ExternalIdentityLinkReplaceRequest("tenant-a", created.Link.Id, "user-b", "contoso", Identity("subject-new")))).IsTypeOf<ExternalIdentityLinkReplaceResult.Success>());
+        await Assert.That(replaced.NewLink.Id).IsNotEqualTo(created.Link.Id);
+        await Assert.That(replaced.NewLink.UserId).IsEqualTo("user-b");
+        await Assert.That(await scenario.IdentityProvisioner.FindLinkAsync("tenant-a", "contoso", oldIdentity)).IsNull();
+        await Assert.That((await scenario.IdentityProvisioner.FindLinkAsync("tenant-a", "contoso", Identity("subject-new")))!.Id).IsEqualTo(replaced.NewLink.Id);
     }
 
-    [Fact]
+    [Test]
     public async Task ConcurrentIdentityLinkCreationConvergesOnOneWinner()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -185,13 +185,13 @@ public abstract class ExternalAuthenticationStoreConformanceTests
             () => scenario.IdentityProvisioner.CreateLinkOrGetExistingAsync(request),
             () => scenario.IdentityProvisioner.CreateLinkOrGetExistingAsync(request));
 
-        Assert.Single(results, x => x.WasLinkCreated);
-        Assert.Single(results, x => !x.WasLinkCreated);
-        Assert.Single(results.Select(x => x.Link.Id).Distinct(StringComparer.Ordinal));
-        Assert.Equal(results[0].Link.Id, (await scenario.IdentityProvisioner.FindLinkAsync(request.TenantId, request.ConnectionKey, request.Identity))!.Id);
+        await Assert.That(results).HasSingleItem(x => x.WasLinkCreated);
+        await Assert.That(results).HasSingleItem(x => !x.WasLinkCreated);
+        await Assert.That(results.Select(x => x.Link.Id).Distinct(StringComparer.Ordinal)).HasSingleItem();
+        await Assert.That((await scenario.IdentityProvisioner.FindLinkAsync(request.TenantId, request.ConnectionKey, request.Identity))!.Id).IsEqualTo(results[0].Link.Id);
     }
 
-    [Fact]
+    [Test]
     public async Task ConcurrentIdentityLinkReplacementUsesTheOldLinkAsAnAtomicGuard()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -203,15 +203,15 @@ public abstract class ExternalAuthenticationStoreConformanceTests
             () => scenario.IdentityProvisioner.ReplaceAsync(new ExternalIdentityLinkReplaceRequest("tenant-a", old.Id, "user-a", "contoso", Identity("subject-a"))),
             () => scenario.IdentityProvisioner.ReplaceAsync(new ExternalIdentityLinkReplaceRequest("tenant-a", old.Id, "user-a", "contoso", Identity("subject-b"))));
 
-        Assert.Single(results.OfType<ExternalIdentityLinkReplaceResult.Success>());
-        Assert.Single(results.OfType<ExternalIdentityLinkReplaceResult.NotFound>());
+        await Assert.That(results.OfType<ExternalIdentityLinkReplaceResult.Success>()).HasSingleItem();
+        await Assert.That(results.OfType<ExternalIdentityLinkReplaceResult.NotFound>()).HasSingleItem();
         var replacementA = await scenario.IdentityProvisioner.FindLinkAsync("tenant-a", "contoso", Identity("subject-a"));
         var replacementB = await scenario.IdentityProvisioner.FindLinkAsync("tenant-a", "contoso", Identity("subject-b"));
-        Assert.True((replacementA is null) != (replacementB is null));
-        Assert.Null(await scenario.IdentityProvisioner.FindLinkAsync("tenant-a", "contoso", Identity("subject-old")));
+        await Assert.That((replacementA is null) != (replacementB is null)).IsTrue();
+        await Assert.That(await scenario.IdentityProvisioner.FindLinkAsync("tenant-a", "contoso", Identity("subject-old"))).IsNull();
     }
 
-    [Fact]
+    [Test]
     public async Task ConcurrentRegistryVersionInitializationRecoversFromInsertRace()
     {
         await using var scenario = await CreateScenarioAsync();
@@ -220,36 +220,36 @@ public abstract class ExternalAuthenticationStoreConformanceTests
             () => scenario.RegistryVersionStore.AdvanceAsync(),
             () => scenario.RegistryVersionStore.AdvanceAsync());
 
-        Assert.Equal([2L, 3L], concurrentAdvances.OrderBy(x => x).ToArray());
-        Assert.Equal(3L, await scenario.RegistryVersionStore.GetVersionAsync());
-        Assert.True(await scenario.RegistryVersionStore.IsCurrentAsync(3));
+        await Assert.That(concurrentAdvances.OrderBy(x => x).ToArray()).IsEquivalentTo([2L, 3L], TUnit.Assertions.Enums.CollectionOrdering.Matching);
+        await Assert.That(await scenario.RegistryVersionStore.GetVersionAsync()).IsEqualTo(3L);
+        await Assert.That(await scenario.RegistryVersionStore.IsCurrentAsync(3)).IsTrue();
     }
 
-    [Fact]
+    [Test]
     public async Task RegistryVersionStoreReportsPreviousVersionAsNotCurrentAfterAdvance()
     {
         await using var scenario = await CreateScenarioAsync();
         var initial = await scenario.RegistryVersionStore.GetVersionAsync();
-        Assert.True(await scenario.RegistryVersionStore.IsCurrentAsync(initial));
+        await Assert.That(await scenario.RegistryVersionStore.IsCurrentAsync(initial)).IsTrue();
 
         var seeded = await scenario.RegistryVersionStore.AdvanceAsync();
-        Assert.Equal(initial + 1, seeded);
-        Assert.False(await scenario.RegistryVersionStore.IsCurrentAsync(initial));
-        Assert.True(await scenario.RegistryVersionStore.IsCurrentAsync(seeded));
+        await Assert.That(seeded).IsEqualTo(initial + 1);
+        await Assert.That(await scenario.RegistryVersionStore.IsCurrentAsync(initial)).IsFalse();
+        await Assert.That(await scenario.RegistryVersionStore.IsCurrentAsync(seeded)).IsTrue();
 
         var concurrentAdvances = await RunConcurrentlyAsync(scenario, ConformanceRacePoint.RegistryVersionAdvance,
             () => scenario.RegistryVersionStore.AdvanceAsync(),
             () => scenario.RegistryVersionStore.AdvanceAsync());
-        Assert.Equal([seeded + 1, seeded + 2], concurrentAdvances.OrderBy(x => x).ToArray());
+        await Assert.That(concurrentAdvances.OrderBy(x => x).ToArray()).IsEquivalentTo([seeded + 1, seeded + 2], TUnit.Assertions.Enums.CollectionOrdering.Matching);
         var afterConcurrent = await scenario.RegistryVersionStore.GetVersionAsync();
-        Assert.Equal(seeded + 2, afterConcurrent);
-        Assert.True(await scenario.RegistryVersionStore.IsCurrentAsync(afterConcurrent));
+        await Assert.That(afterConcurrent).IsEqualTo(seeded + 2);
+        await Assert.That(await scenario.RegistryVersionStore.IsCurrentAsync(afterConcurrent)).IsTrue();
 
         var advanced = await scenario.RegistryVersionStore.AdvanceAsync();
 
-        Assert.Equal(afterConcurrent + 1, advanced);
-        Assert.False(await scenario.RegistryVersionStore.IsCurrentAsync(initial));
-        Assert.True(await scenario.RegistryVersionStore.IsCurrentAsync(advanced));
+        await Assert.That(advanced).IsEqualTo(afterConcurrent + 1);
+        await Assert.That(await scenario.RegistryVersionStore.IsCurrentAsync(initial)).IsFalse();
+        await Assert.That(await scenario.RegistryVersionStore.IsCurrentAsync(advanced)).IsTrue();
     }
 
     private static async Task<T[]> RunConcurrentlyAsync<T>(Func<ValueTask<T>> first, Func<ValueTask<T>> second)
@@ -374,25 +374,13 @@ public abstract class ExternalAuthenticationStoreConformanceTests
     private static ExternalIdentity Identity(string subject) => new("https://issuer.example", subject, new Dictionary<string, IReadOnlyCollection<string>>());
 }
 
-[CollectionDefinition(Name)]
-public sealed class ExternalAuthenticationInMemoryConformanceCollection
-{
-    public const string Name = "ExternalAuthentication:InMemory";
-}
-
-[CollectionDefinition(Name)]
-public sealed class ExternalAuthenticationSqliteConformanceCollection
-{
-    public const string Name = "ExternalAuthentication:EFCore.Sqlite";
-}
-
-[Collection(ExternalAuthenticationInMemoryConformanceCollection.Name)]
+[InheritsTests]
 public sealed class InMemoryExternalAuthenticationStoreConformanceTests : ExternalAuthenticationStoreConformanceTests
 {
     protected override Task<ExternalAuthenticationStoreScenario> CreateScenarioAsync() => ExternalAuthenticationStoreScenario.CreateInMemoryAsync();
 }
 
-[Collection(ExternalAuthenticationSqliteConformanceCollection.Name)]
+[InheritsTests]
 public sealed class SqliteExternalAuthenticationStoreConformanceTests : ExternalAuthenticationStoreConformanceTests
 {
     protected override Task<ExternalAuthenticationStoreScenario> CreateScenarioAsync() => ExternalAuthenticationStoreScenario.CreateSqliteAsync();
@@ -532,22 +520,35 @@ public sealed class ExternalAuthenticationStoreScenario(
         }
     }
 
-    private static Task AssertInMemoryRefreshTokenConflictAsync(Func<Task> operation) =>
-        Assert.ThrowsAsync<InvalidOperationException>(operation);
+    private static async Task AssertInMemoryRefreshTokenConflictAsync(Func<Task> operation) =>
+        await Assert.ThrowsExactlyAsync<InvalidOperationException>(operation);
 
     private static async Task AssertSqliteRefreshTokenConflictAsync(Func<Task> operation)
     {
-        var exception = await Record.ExceptionAsync(operation);
+        var exception = await CaptureExceptionAsync(operation);
         var sqliteException = exception switch
         {
             DbUpdateException { InnerException: SqliteException inner } => inner,
             SqliteException direct => direct,
-            _ => throw new Xunit.Sdk.XunitException($"Expected a SQLite uniqueness violation, received {exception?.GetType().FullName ?? "no exception"}.")
+            _ => throw new TUnit.Assertions.Exceptions.AssertionException($"Expected a SQLite uniqueness violation, received {exception?.GetType().FullName ?? "no exception"}.")
         };
 
-        Assert.Equal(19, sqliteException.SqliteErrorCode);
-        Assert.Contains("UNIQUE constraint failed", sqliteException.Message, StringComparison.Ordinal);
-        Assert.Contains("ExternalAuthenticationSessionRefreshTokens.Hash", sqliteException.Message, StringComparison.Ordinal);
+        await Assert.That(sqliteException.SqliteErrorCode).IsEqualTo(19);
+        await Assert.That(sqliteException.Message).Contains("UNIQUE constraint failed").WithComparison(StringComparison.Ordinal);
+        await Assert.That(sqliteException.Message).Contains("ExternalAuthenticationSessionRefreshTokens.Hash").WithComparison(StringComparison.Ordinal);
+    }
+
+    private static async Task<Exception?> CaptureExceptionAsync(Func<Task> operation)
+    {
+        try
+        {
+            await operation();
+            return null;
+        }
+        catch (Exception exception)
+        {
+            return exception;
+        }
     }
 
     // SQLite uses reader-disposal boundaries to hold both callers after EF has consumed their results and before

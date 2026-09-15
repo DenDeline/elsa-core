@@ -13,7 +13,8 @@ namespace Elsa.Identity.UnitTests.Services;
 /// </summary>
 public class MemoryApplicationStoreTenantIsolationTests
 {
-    [Fact(DisplayName = "FindAsync hides other tenants and keeps * visible")]
+    [Test]
+    [DisplayName("FindAsync hides other tenants and keeps * visible")]
     public async Task FindAsync_HidesOtherTenants()
     {
         var store = CreateStore("tenant-a");
@@ -23,14 +24,15 @@ public class MemoryApplicationStoreTenantIsolationTests
         var star = await store.FindAsync(new ApplicationFilter { Id = "app-star" });
         var other = await store.FindAsync(new ApplicationFilter { Id = "app-b" });
 
-        Assert.NotNull(own);
-        Assert.Equal("app-a", own.Id);
-        Assert.NotNull(star);
-        Assert.Equal("app-star", star.Id);
-        Assert.Null(other);
+        await Assert.That(own).IsNotNull();
+        await Assert.That(own.Id).IsEqualTo("app-a");
+        await Assert.That(star).IsNotNull();
+        await Assert.That(star.Id).IsEqualTo("app-star");
+        await Assert.That(other).IsNull();
     }
 
-    [Fact(DisplayName = "FindAsync on a named tenant hides null TenantId applications")]
+    [Test]
+    [DisplayName("FindAsync on a named tenant hides null TenantId applications")]
     public async Task FindAsync_WhenAmbientIsNamed_HidesNullTenantId()
     {
         var store = StoreWithPreassignedRows("tenant-a");
@@ -38,24 +40,26 @@ public class MemoryApplicationStoreTenantIsolationTests
         var found = await store.FindAsync(new ApplicationFilter { Id = "app-null" });
         var own = await store.FindAsync(new ApplicationFilter { Id = "app-a" });
 
-        Assert.Null(found);
-        Assert.NotNull(own);
-        Assert.Equal("app-a", own.Id);
+        await Assert.That(found).IsNull();
+        await Assert.That(own).IsNotNull();
+        await Assert.That(own.Id).IsEqualTo("app-a");
     }
 
-    [Fact(DisplayName = "FindAsync on the default tenant includes null TenantId applications")]
+    [Test]
+    [DisplayName("FindAsync on the default tenant includes null TenantId applications")]
     public async Task FindAsync_WhenAmbientIsDefault_IncludesNullTenantId()
     {
         var store = StoreWithPreassignedRows(Tenant.DefaultTenantId);
 
         var found = await store.FindAsync(new ApplicationFilter { Id = "app-null" });
 
-        Assert.NotNull(found);
-        Assert.Equal("app-null", found.Id);
-        Assert.Null(found.TenantId);
+        await Assert.That(found).IsNotNull();
+        await Assert.That(found.Id).IsEqualTo("app-null");
+        await Assert.That(found.TenantId).IsNull();
     }
 
-    [Fact(DisplayName = "DeleteAsync does not remove another tenant's applications")]
+    [Test]
+    [DisplayName("DeleteAsync does not remove another tenant's applications")]
     public async Task DeleteAsync_DoesNotDeleteOtherTenantRows()
     {
         var backing = new MemoryStore<Application>();
@@ -66,11 +70,12 @@ public class MemoryApplicationStoreTenantIsolationTests
         await tenantA.DeleteAsync(new ApplicationFilter { Id = "app-b" });
         var remaining = await tenantB.FindAsync(new ApplicationFilter { Id = "app-b" });
 
-        Assert.NotNull(remaining);
-        Assert.Equal("app-b", remaining.Id);
+        await Assert.That(remaining).IsNotNull();
+        await Assert.That(remaining.Id).IsEqualTo("app-b");
     }
 
-    [Fact(DisplayName = "DeleteAsync leaves a same-ID row after another tenant replaces it")]
+    [Test]
+    [DisplayName("DeleteAsync leaves a same-ID row after another tenant replaces it")]
     public async Task DeleteAsync_WhenSameIdWasReplacedByOtherTenant_LeavesReplacement()
     {
         var backing = new MemoryStore<Application>();
@@ -82,11 +87,12 @@ public class MemoryApplicationStoreTenantIsolationTests
         await tenantA.DeleteAsync(new ApplicationFilter { Id = "shared" });
         var remaining = await tenantB.FindAsync(new ApplicationFilter { Id = "shared" });
 
-        Assert.NotNull(remaining);
-        Assert.Equal("tenant-b", remaining.TenantId);
+        await Assert.That(remaining).IsNotNull();
+        await Assert.That(remaining.TenantId).IsEqualTo("tenant-b");
     }
 
-    [Fact(DisplayName = "SaveAsync stamps the ambient tenant when TenantId is unset")]
+    [Test]
+    [DisplayName("SaveAsync stamps the ambient tenant when TenantId is unset")]
     public async Task SaveAsync_WhenTenantIdUnset_StampsAmbientTenant()
     {
         var store = CreateStore("tenant-a");
@@ -94,11 +100,12 @@ public class MemoryApplicationStoreTenantIsolationTests
 
         await store.SaveAsync(application);
 
-        Assert.Equal("tenant-a", application.TenantId);
-        Assert.Equal("tenant-a", (await store.FindAsync(new ApplicationFilter { Id = "app-new" }))!.TenantId);
+        await Assert.That(application.TenantId).IsEqualTo("tenant-a");
+        await Assert.That((await store.FindAsync(new ApplicationFilter { Id = "app-new" }))!.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveAsync does not overwrite * or an explicit TenantId")]
+    [Test]
+    [DisplayName("SaveAsync does not overwrite * or an explicit TenantId")]
     public async Task SaveAsync_DoesNotOverwriteAgnosticOrExplicitTenantId()
     {
         var store = CreateStore("tenant-a");
@@ -108,8 +115,8 @@ public class MemoryApplicationStoreTenantIsolationTests
         await store.SaveAsync(agnostic);
         await store.SaveAsync(explicitTenant);
 
-        Assert.Equal(Tenant.AgnosticTenantId, agnostic.TenantId);
-        Assert.Equal("tenant-a", explicitTenant.TenantId);
+        await Assert.That(agnostic.TenantId).IsEqualTo(Tenant.AgnosticTenantId);
+        await Assert.That(explicitTenant.TenantId).IsEqualTo("tenant-a");
     }
 
     private static MemoryApplicationStore CreateStore(string tenantId) =>

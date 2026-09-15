@@ -13,21 +13,23 @@ namespace Elsa.Identity.UnitTests.Services;
 /// </summary>
 public class MemoryUserStoreUniquenessTests
 {
-    [Fact(DisplayName = "SaveAsync rejects a different Id that repeats a name in the same tenant")]
+    [Test]
+    [DisplayName("SaveAsync rejects a different Id that repeats a name in the same tenant")]
     public async Task SaveAsync_WhenNameExistsUnderAnotherId_Throws()
     {
         var store = CreateStore("tenant-a");
         await store.SaveAsync(CreateUser("user-1", "alice", "tenant-a"));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             store.SaveAsync(CreateUser("user-2", "alice", "tenant-a")));
 
-        Assert.Contains("already exists", exception.Message);
+        await Assert.That(exception!.Message).Contains("already exists");
         var stored = (await store.FindManyAsync(new UserFilter())).ToList();
-        Assert.Equal("user-1", Assert.Single(stored).Id);
+        await Assert.That((await Assert.That(stored).HasSingleItem()).Id).IsEqualTo("user-1");
     }
 
-    [Fact(DisplayName = "SaveAsync allows the same Id to update its own name")]
+    [Test]
+    [DisplayName("SaveAsync allows the same Id to update its own name")]
     public async Task SaveAsync_WhenSameIdUpdatesName_Succeeds()
     {
         var store = CreateStore("tenant-a");
@@ -36,10 +38,11 @@ public class MemoryUserStoreUniquenessTests
         await store.SaveAsync(CreateUser("user-1", "bob", "tenant-a"));
 
         var stored = await store.FindAsync(new UserFilter { Id = "user-1" });
-        Assert.Equal("bob", stored!.Name);
+        await Assert.That(stored!.Name).IsEqualTo("bob");
     }
 
-    [Fact(DisplayName = "SaveAsync allows the same name in different tenants")]
+    [Test]
+    [DisplayName("SaveAsync allows the same name in different tenants")]
     public async Task SaveAsync_WhenNameRepeatsInAnotherTenant_Succeeds()
     {
         var backing = new MemoryStore<User>();
@@ -49,38 +52,41 @@ public class MemoryUserStoreUniquenessTests
         await tenantA.SaveAsync(CreateUser("user-a", "alice", "tenant-a"));
         await tenantB.SaveAsync(CreateUser("user-b", "alice", "tenant-b"));
 
-        Assert.Equal("alice", (await tenantA.FindAsync(new UserFilter { Id = "user-a" }))!.Name);
-        Assert.Equal("alice", (await tenantB.FindAsync(new UserFilter { Id = "user-b" }))!.Name);
+        await Assert.That((await tenantA.FindAsync(new UserFilter { Id = "user-a" }))!.Name).IsEqualTo("alice");
+        await Assert.That((await tenantB.FindAsync(new UserFilter { Id = "user-b" }))!.Name).IsEqualTo("alice");
     }
 
-    [Fact(DisplayName = "SaveAsync rejects renaming onto a name another Id already owns")]
+    [Test]
+    [DisplayName("SaveAsync rejects renaming onto a name another Id already owns")]
     public async Task SaveAsync_WhenRenamingOntoAnotherIdsName_Throws()
     {
         var store = CreateStore("tenant-a");
         await store.SaveAsync(CreateUser("user-1", "alice", "tenant-a"));
         await store.SaveAsync(CreateUser("user-2", "bob", "tenant-a"));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             store.SaveAsync(CreateUser("user-2", "alice", "tenant-a")));
 
-        Assert.Contains("already exists", exception.Message);
-        Assert.Equal("bob", (await store.FindAsync(new UserFilter { Id = "user-2" }))!.Name);
+        await Assert.That(exception!.Message).Contains("already exists");
+        await Assert.That((await store.FindAsync(new UserFilter { Id = "user-2" }))!.Name).IsEqualTo("bob");
     }
 
-    [Fact(DisplayName = "SaveAsync treats a stamped ambient tenant as the uniqueness tenant")]
+    [Test]
+    [DisplayName("SaveAsync treats a stamped ambient tenant as the uniqueness tenant")]
     public async Task SaveAsync_WhenTenantIdUnset_UsesStampedAmbientTenantForUniqueness()
     {
         var store = CreateStore("tenant-a");
         await store.SaveAsync(CreateUser("user-1", "alice", tenantId: null));
 
-        var exception = await Assert.ThrowsAsync<InvalidOperationException>(() =>
+        var exception = await Assert.ThrowsExactlyAsync<InvalidOperationException>(() =>
             store.SaveAsync(CreateUser("user-2", "alice", tenantId: null)));
 
-        Assert.Contains("already exists", exception.Message);
-        Assert.Equal("tenant-a", (await store.FindAsync(new UserFilter { Id = "user-1" }))!.TenantId);
+        await Assert.That(exception!.Message).Contains("already exists");
+        await Assert.That((await store.FindAsync(new UserFilter { Id = "user-1" }))!.TenantId).IsEqualTo("tenant-a");
     }
 
-    [Fact(DisplayName = "SaveAsync allows the same name for * and a tenant-scoped user")]
+    [Test]
+    [DisplayName("SaveAsync allows the same name for * and a tenant-scoped user")]
     public async Task SaveAsync_WhenAgnosticAndTenantScopedShareName_Succeeds()
     {
         var store = CreateStore("tenant-a");
@@ -88,8 +94,8 @@ public class MemoryUserStoreUniquenessTests
         await store.SaveAsync(CreateUser("user-star", "alice", Tenant.AgnosticTenantId));
         await store.SaveAsync(CreateUser("user-a", "alice", "tenant-a"));
 
-        Assert.NotNull(await store.FindAsync(new UserFilter { Id = "user-star" }));
-        Assert.NotNull(await store.FindAsync(new UserFilter { Id = "user-a" }));
+        await Assert.That(await store.FindAsync(new UserFilter { Id = "user-star" })).IsNotNull();
+        await Assert.That(await store.FindAsync(new UserFilter { Id = "user-a" })).IsNotNull();
     }
 
     private static MemoryUserStore CreateStore(string tenantId) =>

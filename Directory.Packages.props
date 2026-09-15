@@ -56,7 +56,7 @@
         <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.DevServer" Version="10.0.9"/>
         <PackageVersion Include="Microsoft.AspNetCore.Components.WebAssembly.Server" Version="10.0.9"/>
         <PackageVersion Include="Microsoft.AspNetCore.DataProtection.Abstractions" Version="10.0.9"/>
-        <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.9"/>
+        <PackageVersion Include="Microsoft.AspNetCore.Mvc.Testing" Version="10.0.11"/>
         <PackageVersion Include="Microsoft.Data.Sqlite" Version="10.0.9"/>
         <PackageVersion Include="Microsoft.Data.Sqlite.Core" Version="10.0.9"/>
         <PackageVersion Include="Microsoft.EntityFrameworkCore" Version="10.0.9"/>
@@ -66,23 +66,23 @@
         <PackageVersion Include="Microsoft.EntityFrameworkCore.SqlServer" Version="10.0.9"/>
         <PackageVersion Include="Microsoft.Extensions.Caching.Abstractions" Version="10.0.9"/>
         <PackageVersion Include="Microsoft.Extensions.Caching.Memory" Version="10.0.9"/>
-        <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.9"/>
-        <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.9"/>
-        <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.9"/>
-        <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.9"/>
-        <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.9"/>
-        <PackageVersion Include="Microsoft.Extensions.DependencyModel" Version="10.0.9"/>
+        <PackageVersion Include="Microsoft.Extensions.Configuration" Version="10.0.11"/>
+        <PackageVersion Include="Microsoft.Extensions.Configuration.Abstractions" Version="10.0.11"/>
+        <PackageVersion Include="Microsoft.Extensions.Configuration.Json" Version="10.0.11"/>
+        <PackageVersion Include="Microsoft.Extensions.DependencyInjection" Version="10.0.11"/>
+        <PackageVersion Include="Microsoft.Extensions.DependencyInjection.Abstractions" Version="10.0.11"/>
+        <PackageVersion Include="Microsoft.Extensions.DependencyModel" Version="10.0.11"/>
         <PackageVersion Include="Microsoft.Extensions.Diagnostics.HealthChecks" Version="10.0.9"/>
-        <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.9"/>
+        <PackageVersion Include="Microsoft.Extensions.Hosting.Abstractions" Version="10.0.11"/>
         <PackageVersion Include="Microsoft.Extensions.Http" Version="10.0.9"/>
         <PackageVersion Include="Microsoft.Extensions.Http.Polly" Version="10.0.9"/>
         <PackageVersion Include="Microsoft.Extensions.Http.Resilience" Version="10.1.0"/>
-        <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.9"/>
-        <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.9"/>
+        <PackageVersion Include="Microsoft.Extensions.Options" Version="10.0.11"/>
+        <PackageVersion Include="Microsoft.Extensions.Options.ConfigurationExtensions" Version="10.0.11"/>
         <PackageVersion Include="Microsoft.Extensions.Resilience" Version="10.1.0"/>
-        <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.9"/>
-        <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.9"/>
-        <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.9"/>
+        <PackageVersion Include="Microsoft.Extensions.Logging" Version="10.0.11"/>
+        <PackageVersion Include="Microsoft.Extensions.Logging.Abstractions" Version="10.0.11"/>
+        <PackageVersion Include="Microsoft.Extensions.Logging.Console" Version="10.0.11"/>
         <PackageVersion Include="Npgsql.EntityFrameworkCore.PostgreSQL" Version="10.0.2"/>
         <PackageVersion Include="Oracle.EntityFrameworkCore" Version="10.23.26200"/>
         <PackageVersion Include="Scrutor" Version="7.0.0"/>
@@ -106,8 +106,6 @@
         <PackageVersion Include="ConsoleLogStreaming.Core" Version="1.1.0"/>
         <PackageVersion Include="ConsoleLogStreaming.Persistence.Sqlite" Version="1.1.0"/>
         <PackageVersion Include="ConsoleLogStreaming.SignalR" Version="1.1.0"/>
-        <PackageVersion Include="coverlet.collector" Version="6.0.4" PrivateAssets="All"/>
-        <PackageVersion Include="coverlet.msbuild" Version="6.0.4" PrivateAssets="All"/>
         <PackageVersion Include="Cronos" Version="0.11.1"/>
         <PackageVersion Include="CShells" Version="0.0.28"/>
         <PackageVersion Include="CShells.Abstractions" Version="0.0.28"/>
@@ -128,7 +126,6 @@
         <PackageVersion Include="Fluid.Core" Version="2.31.0"/>
         <PackageVersion Include="Fody" Version="6.9.3" PrivateAssets="All"/>
         <PackageVersion Include="GitHub.Copilot.SDK" Version="1.0.0"/>
-        <PackageVersion Include="GitHubActionsTestLogger" Version="3.0.4" PrivateAssets="All"/>
         <PackageVersion Include="Humanizer.Core" Version="3.0.10"/>
         <PackageVersion Include="IronCompress" Version="1.7.0"/>
         <PackageVersion Include="JetBrains.Annotations" Version="2025.2.4"/>
@@ -149,8 +146,7 @@
         <PackageVersion Include="Microsoft.Identity.Client" Version="4.79.2"/>
         <PackageVersion Include="Microsoft.IdentityModel.JsonWebTokens" Version="8.0.1"/>
         <PackageVersion Include="Microsoft.IdentityModel.Protocols.OpenIdConnect" Version="8.0.1"/>
-        <PackageVersion Include="Microsoft.NET.Test.Sdk" Version="18.0.1"/>
-        <PackageVersion Include="Moq" Version="4.20.72"/>
+        <PackageVersion Include="Microsoft.Testing.Extensions.HangDump" Version="2.4.0"/>
         <PackageVersion Include="MongoDB.Driver" Version="3.9.0"/>
         <PackageVersion Include="MySql.Data" Version="9.5.0"/>
         <PackageVersion Include="Newtonsoft.Json" Version="13.0.4"/>
@@ -207,12 +203,9 @@
         <PackageVersion Include="Testcontainers.RabbitMq" Version="4.9.0"/>
         <PackageVersion Include="Testcontainers.Redis" Version="4.9.0"/>
         <PackageVersion Include="ThrottleDebounce" Version="2.0.2"/>
+        <PackageVersion Include="TUnit" Version="1.66.27"/>
+        <PackageVersion Include="TUnit.AspNetCore" Version="1.66.27"/>
         <PackageVersion Include="WebhooksCore" Version="0.0.1"/>
-        <PackageVersion Include="xunit" Version="2.9.3"/>
-        <PackageVersion Include="xunit.abstractions" Version="2.0.3"/>
-        <PackageVersion Include="xunit.assert" Version="2.9.3"/>
-        <PackageVersion Include="xunit.extensibility.core" Version="2.9.3"/>
-        <PackageVersion Include="xunit.runner.visualstudio" Version="3.1.5" PrivateAssets="All"/>
         <PackageVersion Include="Yarp.ReverseProxy" Version="2.3.0"/>
     </ItemGroup>
 </Project>

@@ -1,3 +1,6 @@
+using System.IO;
+using System.Threading.Tasks;
+
 namespace Elsa.Secrets.UnitTests;
 
 /// <summary>
@@ -9,61 +12,61 @@ namespace Elsa.Secrets.UnitTests;
 /// </summary>
 public class SecretDefaultTenantUniquenessMigrationTests
 {
-    [Theory]
-    [InlineData("Elsa.Secrets.Persistence.EFCore.Sqlite")]
-    [InlineData("Elsa.Secrets.Persistence.EFCore.SqlServer")]
-    [InlineData("Elsa.Secrets.Persistence.EFCore.PostgreSql")]
-    [InlineData("Elsa.Secrets.Persistence.EFCore.MySql")]
-    [InlineData("Elsa.Secrets.Persistence.EFCore.Oracle")]
-    public void SecretDefaultTenantUniqueness_StampsNullTenantIdAndDoesNotDeleteDuplicates(string providerProject)
+    [Test]
+    [Arguments("Elsa.Secrets.Persistence.EFCore.Sqlite")]
+    [Arguments("Elsa.Secrets.Persistence.EFCore.SqlServer")]
+    [Arguments("Elsa.Secrets.Persistence.EFCore.PostgreSql")]
+    [Arguments("Elsa.Secrets.Persistence.EFCore.MySql")]
+    [Arguments("Elsa.Secrets.Persistence.EFCore.Oracle")]
+    public async Task SecretDefaultTenantUniqueness_StampsNullTenantIdAndDoesNotDeleteDuplicates(string providerProject)
     {
         var migration = FindMigration(providerProject);
 
-        Assert.Contains("TenantId", migration, StringComparison.Ordinal);
-        Assert.Contains("IS NULL", migration, StringComparison.Ordinal);
-        Assert.DoesNotContain("DELETE FROM", migration, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("DeleteData", migration, StringComparison.OrdinalIgnoreCase);
-        Assert.DoesNotContain("COALESCE", migration, StringComparison.OrdinalIgnoreCase);
+        await Assert.That(migration).Contains("TenantId");
+        await Assert.That(migration).Contains("IS NULL");
+        await Assert.That(migration).DoesNotContain("DELETE FROM");
+        await Assert.That(migration).DoesNotContain("DeleteData");
+        await Assert.That(migration).DoesNotContain("COALESCE");
     }
 
-    [Fact]
-    public void SecretDefaultTenantUniqueness_SqliteFailsLoudlyAtCreateIndex()
+    [Test]
+    public async Task SecretDefaultTenantUniqueness_SqliteFailsLoudlyAtCreateIndex()
     {
         // SQLite cannot abort from a standalone SELECT, so CreateIndex unique is the fail-loud path.
         var migration = FindMigration("Elsa.Secrets.Persistence.EFCore.Sqlite");
-        Assert.DoesNotContain("RAISE", migration, StringComparison.Ordinal);
-        Assert.Contains("CreateIndex", migration, StringComparison.Ordinal);
-        Assert.Contains("unique: true", migration, StringComparison.Ordinal);
+        await Assert.That(migration).DoesNotContain("RAISE");
+        await Assert.That(migration).Contains("CreateIndex");
+        await Assert.That(migration).Contains("unique: true");
     }
 
-    [Theory]
-    [InlineData("Elsa.Secrets.Persistence.EFCore.SqlServer", "THROW")]
-    [InlineData("Elsa.Secrets.Persistence.EFCore.PostgreSql", "RAISE EXCEPTION")]
-    [InlineData("Elsa.Secrets.Persistence.EFCore.MySql", "SIGNAL")]
-    [InlineData("Elsa.Secrets.Persistence.EFCore.Oracle", "RAISE_APPLICATION_ERROR")]
-    public void SecretDefaultTenantUniqueness_PreflightsDuplicateKeys(string providerProject, string abortKeyword)
+    [Test]
+    [Arguments("Elsa.Secrets.Persistence.EFCore.SqlServer", "THROW")]
+    [Arguments("Elsa.Secrets.Persistence.EFCore.PostgreSql", "RAISE EXCEPTION")]
+    [Arguments("Elsa.Secrets.Persistence.EFCore.MySql", "SIGNAL")]
+    [Arguments("Elsa.Secrets.Persistence.EFCore.Oracle", "RAISE_APPLICATION_ERROR")]
+    public async Task SecretDefaultTenantUniqueness_PreflightsDuplicateKeys(string providerProject, string abortKeyword)
     {
         var migration = FindMigration(providerProject);
 
-        Assert.Contains(abortKeyword, migration, StringComparison.Ordinal);
-        Assert.Contains("COUNT(*)", migration, StringComparison.Ordinal);
-        Assert.Contains("Duplicate keys", migration, StringComparison.OrdinalIgnoreCase);
-        Assert.Contains("HAVING COUNT(*) > 1", migration, StringComparison.Ordinal);
+        await Assert.That(migration).Contains(abortKeyword);
+        await Assert.That(migration).Contains("COUNT(*)");
+        await Assert.That(migration).Contains("Duplicate keys");
+        await Assert.That(migration).Contains("HAVING COUNT(*) > 1");
     }
 
-    [Fact]
-    public void SecretDefaultTenantUniqueness_SqlServerKeepsFilteredUniqueIndex()
+    [Test]
+    public async Task SecretDefaultTenantUniqueness_SqlServerKeepsFilteredUniqueIndex()
     {
         var migration = FindMigration("Elsa.Secrets.Persistence.EFCore.SqlServer");
-        Assert.Contains("[TenantId] IS NOT NULL", migration, StringComparison.Ordinal);
+        await Assert.That(migration).Contains("[TenantId] IS NOT NULL");
     }
 
-    [Fact]
-    public void SecretDefaultTenantUniqueness_OracleUsesNvlBecauseEmptyStringIsNull()
+    [Test]
+    public async Task SecretDefaultTenantUniqueness_OracleUsesNvlBecauseEmptyStringIsNull()
     {
         var migration = FindMigration("Elsa.Secrets.Persistence.EFCore.Oracle");
-        Assert.Contains("NVL(\"TenantId\", CHR(1))", migration, StringComparison.Ordinal);
-        Assert.Contains("CREATE UNIQUE INDEX", migration, StringComparison.Ordinal);
+        await Assert.That(migration).Contains("NVL(\"TenantId\", CHR(1))");
+        await Assert.That(migration).Contains("CREATE UNIQUE INDEX");
     }
 
     private static string FindMigration(string providerProject)
